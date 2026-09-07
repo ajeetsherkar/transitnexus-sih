@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: transitnexus-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: transitnexus-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      TRANSITNEXUS_API_URL: http://backend:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./data:/app/data

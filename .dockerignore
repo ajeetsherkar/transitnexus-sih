@@ -1,0 +1,12 @@
+.venv/
+.git/
+.gitignore
+.DS_Store
+runs/
+*.pt
+data/raw/
+models/
+*.mp4
+*.avi
+*.mov
+*.mkv
