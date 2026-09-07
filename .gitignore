@@ -1,0 +1,20 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# OS files
+.DS_Store
+
+# Ultralytics
+runs/
+*.pt
+
+# Environment / secrets
+.env
+.env.*
+
+# Temporary files
+*.part
