@@ -111,6 +111,10 @@ if zone_counts:
 
 st.sidebar.subheader("🔥 Congestion")
 st.sidebar.metric("Congestion Events", f"{len(congestion_events):,}")
+incident_events = [
+    event for event in events
+    if event.get("event_type") == "incident"
+]
 
 center_lat = sum(lat for lat, _ in ROUTE_POINTS) / len(ROUTE_POINTS)
 center_lon = sum(lon for _, lon in ROUTE_POINTS) / len(ROUTE_POINTS)
@@ -199,6 +203,23 @@ for event in events:
 
     except (KeyError, TypeError, ValueError):
         continue
+
+st.subheader("🚨 Live Alerts")
+if incident_events:
+    for incident in incident_events:
+        st.error(
+            f"Incident detected • Plate: {incident.get('plate', 'N/A')} • "
+            f"Confidence: {float(incident.get('plate_confidence', 0)):.2f} • "
+            f"Location: {float(incident.get('lat', 0)):.6f}, "
+            f"{float(incident.get('lon', 0)):.6f}"
+        )
+        st.caption(
+            f"Timestamp: {incident.get('timestamp', 'N/A')} • "
+            f"Source: {incident.get('plate_source', 'N/A')} • "
+            f"{incident.get('ocr_note', '')}"
+        )
+else:
+    st.info("No active incident alerts.")
 
 st.subheader("Live Event Map")
 

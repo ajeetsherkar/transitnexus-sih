@@ -20839,5 +20839,22 @@
     "lon": 74.503569,
     "timestamp": "1970-01-01T00:00:29.966667+00:00",
     "frame_path": "data/processed/events/event_002604.jpg"
+  },
+  {
+    "event_type": "incident",
+    "plate": "MH15-TRN-01",
+    "plate_source": "mock_ocr",
+    "plate_confidence": 0.85,
+    "confidence": 0.85,
+    "lat": 19.902751,
+    "lon": 74.498161,
+    "timestamp": "1970-01-01T00:00:25.57+00:00",
+    "frame_path": "data/processed/events/incident_frames/incident_frame_767.jpg",
+    "supporting_frames": [
+      "frame_761",
+      "frame_767",
+      "frame_773"
+    ],
+    "ocr_note": "Mock plate used for prototype demo; OCR accuracy to be improved in Phase 2."
   }
 ]
