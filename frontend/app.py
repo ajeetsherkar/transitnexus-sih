@@ -1,8 +1,13 @@
 import os
+from collections import Counter
+
+import folium
+import pandas as pd
 import requests
 import streamlit as st
-import folium
+from folium.plugins import HeatMap
 from streamlit_folium import st_folium
+
 
 API_URL = os.getenv("TRANSITNEXUS_API_URL", "http://127.0.0.1:8000")
 
@@ -53,6 +58,60 @@ except requests.RequestException as exc:
 
 st.success(f"Connected to FastAPI • {len(events):,} events loaded")
 
+# Session 8 analytics
+event_counts = Counter(
+    event.get("event_type", "unknown")
+    for event in events
+)
+
+congestion_events = [
+    event
+    for event in events
+    if event.get("event_type") == "congestion"
+]
+
+# Busiest zone: rounded latitude/longitude grouping
+zone_counts = Counter()
+
+for event in events:
+    try:
+        lat = round(float(event["lat"]), 4)
+        lon = round(float(event["lon"]), 4)
+        zone_counts[(lat, lon)] += 1
+    except (KeyError, TypeError, ValueError):
+        continue
+
+st.sidebar.header("📊 Analytics")
+
+st.sidebar.metric("Total Events", f"{len(events):,}")
+
+st.sidebar.subheader("Event Breakdown")
+
+if event_counts:
+    chart_data = pd.DataFrame(
+        {
+            "event_type": list(event_counts.keys()),
+            "count": list(event_counts.values()),
+        }
+    ).set_index("event_type")
+
+    st.sidebar.bar_chart(chart_data)
+
+if zone_counts:
+    busiest_zone, busiest_count = zone_counts.most_common(1)[0]
+
+    st.sidebar.subheader("📍 Busiest Zone")
+    st.sidebar.write(
+        f"**{busiest_count:,} events**"
+    )
+    st.sidebar.caption(
+        f"Lat: {busiest_zone[0]:.4f}, "
+        f"Lon: {busiest_zone[1]:.4f}"
+    )
+
+st.sidebar.subheader("🔥 Congestion")
+st.sidebar.metric("Congestion Events", f"{len(congestion_events):,}")
+
 center_lat = sum(lat for lat, _ in ROUTE_POINTS) / len(ROUTE_POINTS)
 center_lon = sum(lon for _, lon in ROUTE_POINTS) / len(ROUTE_POINTS)
 
@@ -82,6 +141,32 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="flag"),
 ).add_to(m)
 
+# Session 8: congestion heat map weighted by density_score
+heatmap_data = []
+
+for event in congestion_events:
+    try:
+        lat = float(event["lat"])
+        lon = float(event["lon"])
+        density_score = float(event.get("density_score", 1.0))
+
+        heatmap_data.append([
+            lat,
+            lon,
+            density_score,
+        ])
+    except (KeyError, TypeError, ValueError):
+        continue
+
+if heatmap_data:
+    HeatMap(
+        heatmap_data,
+        name="Congestion Heat Map",
+        radius=25,
+        blur=18,
+        min_opacity=0.4,
+    ).add_to(m)
+
 for event in events:
     try:
         lat = float(event["lat"])
@@ -90,7 +175,6 @@ for event in events:
         confidence = float(event.get("confidence", 0))
         timestamp = event.get("timestamp", "N/A")
         frame_path = event.get("frame_path", "N/A")
-
         color = EVENT_COLORS.get(event_type, "gray")
 
         popup_html = f"""
@@ -117,4 +201,13 @@ for event in events:
         continue
 
 st.subheader("Live Event Map")
+
+if heatmap_data:
+    st.caption(
+        f"🔥 Congestion heat map active • "
+        f"{len(heatmap_data):,} weighted congestion location(s)"
+    )
+else:
+    st.warning("No congestion events available for the heat map.")
+
 st_folium(m, width=None, height=650)
