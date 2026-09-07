@@ -141,6 +141,8 @@ def run_inference(source: str, model_type: str, confidence: float):
         exist_ok=True,
     )
 
+    for old_crop in EVENT_DIR.glob("*.jpg"):
+        old_crop.unlink()
     EVENTS_FILE.parent.mkdir(
         parents=True,
         exist_ok=True,
