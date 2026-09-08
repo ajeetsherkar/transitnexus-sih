@@ -523,15 +523,63 @@ The next phase can extend TransitNexus with:
 
 ---
 
-## Deployment
+## 🌐 Live Deployment
 
-### Live Demo
+TransitNexus is deployed as a two-service prototype:
 
-> **Live dashboard:** To be added after production deployment.
+- **Frontend — Streamlit GIS Dashboard:**
+  https://transitnexus-sih-bh6zfxwgregqvbmvb7j9tt.streamlit.app/
 
-> **Live API:** To be added after backend deployment.
+- **Backend — FastAPI API:**
+  https://transitnexus-sih.onrender.com/
 
-The final live URLs will be added here after the backend and Streamlit frontend are deployed and verified end-to-end.
+### Live API Endpoints
+
+- `/` — API status and available endpoints
+- `/events` — Complete processed event dataset
+- `/events?type=incident` — Incident events
+- `/heatmap-data` — Congestion heatmap data
+- `/docs` — Interactive FastAPI Swagger documentation ([open it here](https://transitnexus-sih.onrender.com/docs))
+
+### Deployment Architecture
+
+```text
+                    TransitNexus
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+     Streamlit Community       Render Web Service
+          Cloud                    │
+              │                     │
+              │ HTTPS API requests  │
+              └──────────►──────────┘
+                                    │
+                                    ▼
+                              FastAPI Backend
+                                    │
+                                    ▼
+                           Processed Event Data
+                                    │
+                         ┌──────────┴──────────┐
+                         │                     │
+                         ▼                     ▼
+                    2,606 Events          1 Incident
+```
+
+### Deployment Verification
+
+The deployed prototype was tested end-to-end:
+
+* ✅ Streamlit dashboard loads successfully
+* ✅ Streamlit connects to the deployed FastAPI backend
+* ✅ 2,606 processed events available
+* ✅ Congestion heatmap renders successfully
+* ✅ GIS route and event markers render successfully
+* ✅ Incident event is available through the API
+* ✅ FastAPI `/events` endpoint returns event data
+* ✅ FastAPI `/events?type=incident` returns the simulated incident
+* ✅ FastAPI `/heatmap-data` returns congestion data
 
 ---
 
