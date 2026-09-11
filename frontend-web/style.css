@@ -230,3 +230,41 @@ body {
         transform: translateX(30px);
     }
 }
+
+/* Session 6 - Analytics */
+.analytics-card,
+.chart-card {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 15px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.analytics-card h3,
+.chart-card h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+#busiest-zone {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+
+#busiest-zone-count {
+    margin: 0;
+    font-size: 13px;
+    opacity: 0.75;
+}
+
+.chart-card {
+    height: 360px;
+}
+
+#event-chart {
+    width: 100% !important;
+    height: 300px !important;
+}

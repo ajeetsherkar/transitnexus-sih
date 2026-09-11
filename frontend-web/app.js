@@ -14,6 +14,11 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 const eventCountElement = document.getElementById("event-count");
 const statusElement = document.getElementById("connection-status");
 const detailsElement = document.getElementById("event-details");
+const busiestZoneElement = document.getElementById("busiest-zone");
+const busiestZoneCountElement = document.getElementById("busiest-zone-count");
+
+let eventChart = null;
+let heatLayer = null;
 
 function getEventColor(eventType) {
     switch (eventType) {
@@ -118,6 +123,87 @@ function showToast(event) {
     }, 5000);
 }
 
+function updateAnalytics(events) {
+    const counts = {};
+
+    events.forEach((event) => {
+        const type = event.event_type || "unknown";
+        counts[type] = (counts[type] || 0) + 1;
+    });
+
+    const sortedTypes = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1]);
+
+    const labels = sortedTypes.map(([type]) => type);
+    const values = sortedTypes.map(([, count]) => count);
+
+    if (eventChart) {
+        eventChart.destroy();
+    }
+
+    const chartCanvas = document.getElementById("event-chart");
+
+    eventChart = new Chart(chartCanvas, {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: "Events",
+                    data: values
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        autoSkip: false,
+                        maxRotation: 60,
+                        minRotation: 30
+                    }
+                },
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    const zoneCounts = {};
+
+    events.forEach((event) => {
+        if (
+            typeof event.lat !== "number" ||
+            typeof event.lon !== "number"
+        ) {
+            return;
+        }
+
+        const zone = `${event.lat.toFixed(4)}, ${event.lon.toFixed(4)}`;
+        zoneCounts[zone] = (zoneCounts[zone] || 0) + 1;
+    });
+
+    const busiestZone = Object.entries(zoneCounts)
+        .sort((a, b) => b[1] - a[1])[0];
+
+    if (busiestZone) {
+        busiestZoneElement.textContent = busiestZone[0];
+        busiestZoneCountElement.textContent =
+            `${busiestZone[1]} events`;
+    } else {
+        busiestZoneElement.textContent = "N/A";
+        busiestZoneCountElement.textContent = "";
+    }
+}
+
 async function loadEvents() {
     try {
         const response = await fetch(`${API_URL}/events`);
@@ -133,6 +219,8 @@ async function loadEvents() {
         events.forEach((event) => {
             addEventMarker(event);
         });
+
+        updateAnalytics(events);
 
         if (events.length > 0) {
             const validEvents = events.filter(
@@ -166,6 +254,51 @@ async function loadEvents() {
     }
 }
 
+async function loadHeatmap() {
+    try {
+        const response = await fetch(`${API_URL}/heatmap-data`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const heatmapData = await response.json();
+
+        const points = heatmapData
+            .filter(
+                (point) =>
+                    typeof point.lat === "number" &&
+                    typeof point.lon === "number"
+            )
+            .map((point) => [
+                point.lat,
+                point.lon,
+                Math.max(point.count, 1)
+            ]);
+
+        if (heatLayer) {
+            map.removeLayer(heatLayer);
+        }
+
+        if (points.length > 0) {
+            heatLayer = L.heatLayer(points, {
+                radius: 30,
+                blur: 20,
+                maxZoom: 17,
+                max: 10
+            }).addTo(map);
+
+            console.log(
+                `Loaded ${points.length} congestion heatmap points`
+            );
+        } else {
+            console.log("No congestion heatmap points returned");
+        }
+    } catch (error) {
+        console.error("Failed to load heatmap data:", error);
+    }
+}
+
 function connectWebSocket() {
     console.log(`Connecting to WebSocket: ${WS_URL}`);
 
@@ -191,7 +324,9 @@ function connectWebSocket() {
 
             addEventMarker(event, true);
 
-            const currentCount = Number(eventCountElement.textContent) || 0;
+            const currentCount =
+                Number(eventCountElement.textContent) || 0;
+
             eventCountElement.textContent = currentCount + 1;
 
             showToast(event);
@@ -216,6 +351,10 @@ function connectWebSocket() {
     };
 }
 
-loadEvents().then(() => {
+async function initializeDashboard() {
+    await loadEvents();
+    await loadHeatmap();
     connectWebSocket();
-});
+}
+
+initializeDashboard();

@@ -41,12 +41,23 @@
                 <strong id="event-count">0</strong>
             </div>
 
+            <div class="analytics-card">
+                <h3>Busiest Zone</h3>
+                <strong id="busiest-zone">Calculating...</strong>
+                <p id="busiest-zone-count"></p>
+            </div>
+
             <div class="legend">
                 <h3>Event Types</h3>
                 <div><span class="legend-dot pothole"></span> Pothole</div>
                 <div><span class="legend-dot pedestrian-risk"></span> Pedestrian Risk</div>
                 <div><span class="legend-dot congestion"></span> Congestion</div>
                 <div><span class="legend-dot other"></span> Other Events</div>
+            </div>
+
+            <div class="chart-card">
+                <h3>Event Breakdown</h3>
+                <canvas id="event-chart"></canvas>
             </div>
 
             <div id="event-details" class="event-details">
@@ -61,6 +72,13 @@
         src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         crossorigin=""
     ></script>
+
+    <!-- Application JS -->
+    <!-- Leaflet.heat plugin -->
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- Application JS -->
     <script src="app.js"></script>
