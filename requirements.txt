@@ -6,3 +6,6 @@ streamlit
 folium
 streamlit-folium
 requests
+
+scikit-learn
+joblib
