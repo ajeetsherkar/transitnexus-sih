@@ -13,3 +13,5 @@ joblib
 onnx
 onnxruntime
 onnxslim
+
+websockets

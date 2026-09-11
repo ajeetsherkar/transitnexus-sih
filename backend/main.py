@@ -1,10 +1,12 @@
 from pathlib import Path
+
 import json
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 EVENTS_FILE = BASE_DIR / "data" / "processed" / "events.json"
 
 
@@ -13,6 +15,10 @@ app = FastAPI(
     description="API for serving urban mobility events and congestion heatmap data.",
     version="1.0.0",
 )
+
+
+# Connected WebSocket clients for real-time incident alerts.
+connected_clients: set[WebSocket] = set()
 
 
 def load_events():
@@ -24,6 +30,24 @@ def load_events():
         return json.load(file)
 
 
+async def broadcast_incident(event: dict):
+    """Broadcast a new incident event to all connected WebSocket clients."""
+    disconnected_clients = set()
+
+    message = {
+        "type": "incident",
+        "event": event,
+    }
+
+    for websocket in connected_clients:
+        try:
+            await websocket.send_json(message)
+        except Exception:
+            disconnected_clients.add(websocket)
+
+    connected_clients.difference_update(disconnected_clients)
+
+
 @app.get("/")
 def root():
     return {
@@ -32,6 +56,7 @@ def root():
         "endpoints": [
             "/events",
             "/heatmap-data",
+            "/ws/alerts",
             "/docs",
         ],
     }
@@ -83,3 +108,46 @@ def get_heatmap_data():
         grouped[key]["count"] += 1
 
     return list(grouped.values())
+
+
+@app.websocket("/ws/alerts")
+async def websocket_alerts(websocket: WebSocket):
+    """Maintain a live WebSocket connection for real-time incident alerts."""
+    await websocket.accept()
+    connected_clients.add(websocket)
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        connected_clients.discard(websocket)
+    except Exception:
+        connected_clients.discard(websocket)
+
+
+@app.post("/test/broadcast-incident")
+async def test_broadcast_incident():
+    """
+    Local development endpoint used to verify WebSocket broadcasting.
+
+    This does not modify events.json.
+    """
+    test_event = {
+        "event_type": "incident",
+        "confidence": 0.99,
+        "lat": 19.9021,
+        "lon": 74.4944,
+        "timestamp": "test",
+        "frame_path": "test/websocket_alert.jpg",
+        "plate": "TEST-WS-01",
+        "plate_source": "websocket_test",
+        "plate_confidence": 0.99,
+    }
+
+    await broadcast_incident(test_event)
+
+    return {
+        "status": "broadcast_sent",
+        "event": test_event,
+        "connected_clients": len(connected_clients),
+    }
