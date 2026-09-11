@@ -1,0 +1,174 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f4f6f8;
+    color: #1f2937;
+}
+
+.topbar {
+    min-height: 78px;
+    padding: 14px 24px;
+    background: #172554;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.topbar h1 {
+    font-size: 25px;
+    margin-bottom: 3px;
+}
+
+.topbar p {
+    font-size: 13px;
+    opacity: 0.85;
+}
+
+.status {
+    padding: 8px 13px;
+    border-radius: 18px;
+    background: #475569;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.status.connected {
+    background: #15803d;
+}
+
+.status.error {
+    background: #b91c1c;
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 310px;
+    min-height: calc(100vh - 78px);
+}
+
+.map-section {
+    padding: 16px;
+}
+
+#map {
+    width: 100%;
+    height: calc(100vh - 110px);
+    min-height: 500px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    background: #e5e7eb;
+}
+
+.sidebar {
+    padding: 20px;
+    background: white;
+    border-left: 1px solid #e5e7eb;
+}
+
+.sidebar h2 {
+    font-size: 20px;
+    margin-bottom: 18px;
+}
+
+.sidebar h3 {
+    font-size: 15px;
+    margin-bottom: 12px;
+}
+
+.stat-card {
+    padding: 16px;
+    margin-bottom: 20px;
+    border-radius: 9px;
+    background: #eff6ff;
+    border: 1px solid #dbeafe;
+}
+
+.stat-card span {
+    display: block;
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 5px;
+}
+
+.stat-card strong {
+    font-size: 28px;
+}
+
+.legend {
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 9px;
+}
+
+.legend div {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 9px 0;
+    font-size: 13px;
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.legend-dot.pothole {
+    background: orange;
+}
+
+.legend-dot.pedestrian-risk {
+    background: red;
+}
+
+.legend-dot.congestion {
+    background: yellow;
+}
+
+.legend-dot.other {
+    background: #3b82f6;
+}
+
+.event-details {
+    padding: 15px;
+    border: 1px solid #e5e7eb;
+    border-radius: 9px;
+    font-size: 13px;
+}
+
+.event-details p {
+    color: #64748b;
+    line-height: 1.5;
+}
+
+.event-popup {
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+@media (max-width: 850px) {
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        border-left: none;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    #map {
+        height: 60vh;
+        min-height: 400px;
+    }
+}

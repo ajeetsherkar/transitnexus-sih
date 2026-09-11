@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -14,6 +15,14 @@ app = FastAPI(
     title="TransitNexus API",
     description="API for serving urban mobility events and congestion heatmap data.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

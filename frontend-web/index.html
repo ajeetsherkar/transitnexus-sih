@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransitNexus — Urban Intelligence</title>
+
+    <!-- Leaflet CSS -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        crossorigin=""
+    >
+
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header class="topbar">
+        <div>
+            <h1>TransitNexus</h1>
+            <p>AI-Powered Mobile Urban Intelligence Platform</p>
+        </div>
+
+        <div id="connection-status" class="status">
+            Connecting...
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <section class="map-section">
+            <div id="map"></div>
+        </section>
+
+        <aside class="sidebar">
+            <h2>Event Intelligence</h2>
+
+            <div class="stat-card">
+                <span>Total Events</span>
+                <strong id="event-count">0</strong>
+            </div>
+
+            <div class="legend">
+                <h3>Event Types</h3>
+                <div><span class="legend-dot pothole"></span> Pothole</div>
+                <div><span class="legend-dot pedestrian-risk"></span> Pedestrian Risk</div>
+                <div><span class="legend-dot congestion"></span> Congestion</div>
+                <div><span class="legend-dot other"></span> Other Events</div>
+            </div>
+
+            <div id="event-details" class="event-details">
+                <h3>Event Details</h3>
+                <p>Select a marker on the map.</p>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Leaflet JS -->
+    <script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        crossorigin=""
+    ></script>
+
+    <!-- Application JS -->
+    <script src="app.js"></script>
+</body>
+</html>
