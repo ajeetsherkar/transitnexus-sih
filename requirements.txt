@@ -9,3 +9,7 @@ requests
 
 scikit-learn
 joblib
+
+onnx
+onnxruntime
+onnxslim
