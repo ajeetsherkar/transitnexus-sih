@@ -5,7 +5,8 @@
 runs/
 *.pt
 data/raw/
-models/
+models/*.pt
+models/*.onnx
 *.mp4
 *.avi
 *.mov

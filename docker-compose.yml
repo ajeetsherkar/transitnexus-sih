@@ -22,3 +22,13 @@ services:
       - backend
     volumes:
       - ./data:/app/data
+
+  frontend-web:
+    build:
+      context: .
+      dockerfile: frontend-web/Dockerfile
+    container_name: transitnexus-frontend-web
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
