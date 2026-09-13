@@ -22,12 +22,14 @@ df = pd.read_csv(DATA_PATH)
 low_threshold = df["density_score"].quantile(1 / 3)
 high_threshold = df["density_score"].quantile(2 / 3)
 
+
 def severity(density):
     if density <= low_threshold:
         return "low"
     elif density <= high_threshold:
         return "medium"
     return "high"
+
 
 df["congestion_severity"] = df["density_score"].apply(severity)
 
