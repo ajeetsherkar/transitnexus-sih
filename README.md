@@ -4,7 +4,7 @@
 
 TransitNexus is a prototype urban-intelligence platform designed to transform public-transport fleet video/data into structured mobility events and actionable insights.
 
-The system combines computer vision, event processing, simulated GPS association, congestion analysis, pedestrian-risk detection, incident alerts, a FastAPI backend, and a Streamlit GIS dashboard.
+The system combines computer vision, event processing, simulated GPS association, congestion analysis, pedestrian-risk detection, incident alerts, ML-based congestion and route-delay prediction, a FastAPI backend, WebSocket real-time alerts, and two dashboard frontends: a new Leaflet/HTML/CSS/JavaScript frontend and the original Streamlit prototype kept as a backup.
 
 > **SIH 2026 Prototype — Software Category**
 >
@@ -34,18 +34,40 @@ Structured Event Extraction
 GPS + Timestamp Association
         ↓
 Event Analytics
-        ├── Congestion Analysis
-        ├── Pedestrian Risk Detection
-        └── Incident Detection
-                ↓
-        Plate Extraction / OCR
-                ↓
-          FastAPI Backend
-                ↓
-       Streamlit GIS Dashboard
+   ├── Congestion Analysis
+   ├── Pedestrian Risk Detection
+   └── Incident Detection
+             ↓
+      Plate Extraction / OCR
+             ↓
+      Structured Event Data
+             ↓
+        FastAPI Backend
+        ├── REST APIs
+        ├── RF Congestion Model
+        ├── GBR Route-Delay Model
+        └── WebSocket Alerts
+             ├─────────────┐
+             ↓               ↓
+     Leaflet/JS v2       Streamlit v1
+     Live Frontend       Backup Prototype
 ```
 
 The dashboard provides a visual representation of detected events, congestion zones, analytics, and incident alerts.
+
+### Live Deployments
+
+**v2 — Leaflet/HTML/CSS/JavaScript + real-time WebSocket alerts**
+
+https://transitnexus-frontend.onrender.com
+
+The v2 frontend connects to the deployed FastAPI backend using HTTPS REST APIs and a secure WebSocket (`wss://`) channel for live incident alerts.
+
+**v1 — Streamlit prototype / backup**
+
+The original Streamlit dashboard remains available as a fallback while the new v2 frontend is used as the primary presentation interface.
+
+> The Streamlit version is intentionally retained as a backup to preserve the working prototype while the newer frontend stack is evaluated.
 
 ---
 
@@ -128,19 +150,34 @@ Planned improvements include:
 * Improved OCR/ALPR models
 * Production-grade validation
 
-### 8. GIS Dashboard
+### 8. GIS Dashboards
 
-The Streamlit dashboard provides:
+TransitNexus currently provides two frontend implementations.
+
+**v2 — Leaflet/HTML/CSS/JavaScript frontend**
+
+* Interactive Leaflet route map
+* Event markers and filters
+* Congestion heat map
+* Event analytics
+* Busiest-zone summary
+* Congestion summary
+* AI congestion-severity prediction
+* AI route-delay prediction
+* Real-time incident alerts over WebSockets
+* Plate extraction information
+* Evidence-frame references
+
+**v1 — Streamlit/Folium prototype**
 
 * Interactive route map
 * Event markers
 * Congestion heat map
 * Event analytics
-* Busiest-zone summary
-* Congestion summary
-* Live incident alerts
-* Plate extraction information
-* Evidence-frame references
+* Incident information
+* Plate/evidence information
+
+The Streamlit version remains live as a backup prototype.
 
 ---
 
@@ -149,7 +186,7 @@ The Streamlit dashboard provides:
 ```mermaid
 flowchart TD
     A[Traffic / Fleet Video] --> B[YOLOv8 Detection]
-    A --> C[Pothole Detection]
+    A --> C[Pothole YOLO Detection]
 
     B --> D[Structured Event Extraction]
     C --> D
@@ -170,15 +207,26 @@ flowchart TD
     J --> K[events.json]
 
     K --> L[FastAPI Backend]
-    L --> M[Streamlit GIS Dashboard]
 
-    M --> N[Event Markers]
-    M --> O[Congestion Heat Map]
-    M --> P[Analytics]
-    M --> Q[Live Incident Alerts]
+    L --> M[REST APIs]
+    L --> N[RF Congestion Classifier]
+    L --> O[GBR Route-Delay Regressor]
+    L --> P[WebSocket /ws/alerts]
 
-    R[Docker Compose] --> L
-    R --> M
+    M --> Q[Leaflet / HTML / CSS / JS v2]
+    P --> Q
+
+    M --> R[Streamlit / Folium v1 Backup]
+
+    S[YOLOv8 PyTorch Weights] --> T[ONNX Export]
+    T --> U[ONNX Runtime Benchmark]
+
+    V[Docker Compose] --> L
+    V --> Q
+    V --> R
+
+    W[GitHub Actions CI] --> L
+    W --> Q
 ```
 
 ---
@@ -223,23 +271,75 @@ The event stream is aggregated to generate:
 
 ---
 
+## ML Models and Inference
+
+### Random Forest Congestion Classifier
+
+A Random Forest classifier predicts congestion severity from engineered event-density and temporal features.
+
+Current production prototype output example:
+
+```text
+Congestion severity: high
+High probability: 0.935
+```
+
+### Gradient Boosting Route-Delay Regressor
+
+A Gradient Boosting Regressor estimates route delay from the prototype's simulated training target.
+
+Current production prototype output example:
+
+```text
+Estimated route delay: 65.41 minutes
+```
+
+> The route-delay value is a prototype estimate based on the simulated training target and is not real traffic-delay ground truth.
+
+### ONNX Export and Benchmark
+
+The YOLO models are exported to ONNX to establish a portable inference representation for future edge deployment.
+
+The benchmark was performed on an Apple M2 CPU using the same 50 decoded video frames for both PyTorch and ONNX Runtime.
+
+| Model | PyTorch Avg (ms/frame) | ONNX Avg (ms/frame) | ONNX Change |
+| --- | --- | --- | --- |
+| Vehicle YOLOv8n | 33.60 | 38.12 | -13.43% |
+| Pothole YOLOv8 | 63.25 | 108.43 | -71.43% |
+
+On the tested Apple M2 CPU environment, ONNX Runtime was slower for both models. Therefore, the prototype does **not** claim a guaranteed ONNX latency improvement.
+
+The ONNX export provides a portable inference representation that can be evaluated and optimized for the eventual edge hardware and execution provider.
+
+See `docs/onnx_benchmark.md` for the complete benchmark methodology and additional statistics.
+
+---
+
 ## Technology Stack
 
-| Layer              | Technology                  |
-|--------------------|------------------------------|
-| Programming        | Python                       |
-| Computer Vision    | OpenCV                       |
-| Object Detection   | YOLOv8 / Ultralytics          |
-| Pothole Detection  | YOLO-based pretrained model  |
-| OCR                | EasyOCR                      |
-| Backend            | FastAPI                      |
-| API Server         | Uvicorn                      |
-| Dashboard          | Streamlit                    |
-| GIS Visualization  | Folium                        |
-| Data Processing    | Pandas                       |
-| Containers         | Docker                       |
-| Orchestration      | Docker Compose               |
-| Version Control    | Git / GitHub                 |
+| Layer | Technology |
+| --- | --- |
+| Programming | Python |
+| Computer Vision | OpenCV |
+| Object Detection | YOLOv8 / Ultralytics |
+| Pothole Detection | YOLO-based pretrained model |
+| OCR | EasyOCR |
+| Machine Learning | Scikit-learn |
+| Congestion Model | Random Forest Classifier |
+| Route Delay Model | Gradient Boosting Regressor |
+| Model Serialization | Joblib |
+| Edge Model Format | ONNX |
+| ONNX Inference | ONNX Runtime |
+| Backend | FastAPI |
+| API Server | Uvicorn |
+| Real-Time Communication | WebSockets |
+| v1 Dashboard | Streamlit / Folium |
+| v2 Dashboard | HTML / CSS / JavaScript / Leaflet.js |
+| Data Processing | Pandas |
+| Containers | Docker |
+| Orchestration | Docker Compose |
+| CI/CD | GitHub Actions |
+| Version Control | Git / GitHub |
 
 ---
 
@@ -256,6 +356,11 @@ transitnexus-sih/
 │   ├── Dockerfile
 │   └── app.py
 │
+├── frontend-web/
+│   ├── index.html
+│   ├── style.css
+│   └── app.js
+│
 ├── data/
 │   ├── raw/
 │   │   ├── videos/
@@ -266,17 +371,22 @@ transitnexus-sih/
 │       └── events/
 │
 ├── docs/
-│   └── pipeline.md
+│   ├── pipeline.md
+│   └── onnx_benchmark.md
 │
 ├── models/
-│   └── pothole_best.pt
+│   ├── congestion_rf.joblib
+│   ├── route_delay_gbr.joblib
+│   ├── pothole_best.pt
+│   └── pothole_best.onnx
 │
 ├── schemas/
 │   └── event_schema.json
 │
 ├── scripts/
 │   ├── gps_simulator.py
-│   └── run_inference.py
+│   ├── run_inference.py
+│   └── benchmark_onnx.py
 │
 ├── .dockerignore
 ├── .gitignore
@@ -306,7 +416,10 @@ docker compose up --build
 The services will be available at:
 
 ```text
-Frontend:
+v2 Frontend (Leaflet/JS, primary):
+http://localhost:8081
+
+v1 Frontend (Streamlit, backup):
 http://localhost:8501
 
 Backend:
@@ -407,6 +520,32 @@ GET /heatmap-data
 ```
 
 Returns grouped congestion locations for GIS visualization.
+
+### Predictions
+
+```text
+GET /predictions
+```
+
+Returns the current Random Forest congestion-severity classification and Gradient Boosting route-delay estimate.
+
+Example response:
+
+```json
+{
+  "congestion_severity": "high",
+  "congestion_confidence": 0.935,
+  "route_delay_minutes": 65.41
+}
+```
+
+### Real-Time Incident Alerts (WebSocket)
+
+```text
+WS /ws/alerts
+```
+
+Broadcasts each new incident event to connected clients as it is detected, so the v2 frontend can display alerts live without polling. In production this is served over `wss://`.
 
 ### Interactive API Documentation
 
@@ -525,9 +664,12 @@ The next phase can extend TransitNexus with:
 
 ## 🌐 Live Deployment
 
-TransitNexus is deployed as a two-service prototype:
+TransitNexus is deployed as a three-service prototype: a v2 primary frontend, a v1 backup frontend, and a shared FastAPI backend.
 
-- **Frontend — Streamlit GIS Dashboard:**
+- **v2 Frontend — Leaflet/HTML/CSS/JavaScript GIS Dashboard (primary):**
+  https://transitnexus-frontend.onrender.com
+
+- **v1 Frontend — Streamlit GIS Dashboard (backup):**
   https://transitnexus-sih-bh6zfxwgregqvbmvb7j9tt.streamlit.app/
 
 - **Backend — FastAPI API:**
@@ -539,47 +681,62 @@ TransitNexus is deployed as a two-service prototype:
 - `/events` — Complete processed event dataset
 - `/events?type=incident` — Incident events
 - `/heatmap-data` — Congestion heatmap data
-- `/docs` — Interactive FastAPI Swagger documentation ([open it here](https://transitnexus-sih.onrender.com/docs))
+- `/predictions` — RF congestion-severity and GBR route-delay predictions
+- `/ws/alerts` — WebSocket channel for real-time incident alerts (`wss://` in production)
+- `/docs` — Interactive FastAPI Swagger documentation: https://transitnexus-sih.onrender.com/docs
 
 ### Deployment Architecture
 
 ```text
-                    TransitNexus
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-              ▼                     ▼
-     Streamlit Community       Render Web Service
-          Cloud                    │
-              │                     │
-              │ HTTPS API requests  │
-              └──────────►──────────┘
-                                    │
-                                    ▼
-                              FastAPI Backend
-                                    │
-                                    ▼
-                           Processed Event Data
-                                    │
-                         ┌──────────┴──────────┐
-                         │                     │
-                         ▼                     ▼
-                    2,606 Events          1 Incident
+                              TransitNexus
+                                   │
+                 ┌─────────────────┴─────────────────┐
+                 │                                   │
+                 ▼                                   ▼
+      Render Static Site                    Streamlit Community
+      v2 Leaflet/JS Frontend                Cloud v1 Backup
+                 │                                   │
+                 │ HTTPS REST + WSS                  │ HTTPS REST
+                 │                                   │
+                 └─────────────────┬─────────────────┘
+                                   │
+                                   ▼
+                         FastAPI Backend
+                         Render Web Service
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │              │              │
+                    ▼              ▼              ▼
+                 REST APIs    RF + GBR Models   WebSocket
+                    │              │          /ws/alerts
+                    └──────────────┼──────────────┘
+                                   │
+                                   ▼
+                         Processed Event Data
+                                   │
+                         ┌─────────┴─────────┐
+                         │                   │
+                         ▼                   ▼
+                    2,606 Events        Incident Events
 ```
 
 ### Deployment Verification
 
 The deployed prototype was tested end-to-end:
 
-* ✅ Streamlit dashboard loads successfully
-* ✅ Streamlit connects to the deployed FastAPI backend
-* ✅ 2,606 processed events available
-* ✅ Congestion heatmap renders successfully
-* ✅ GIS route and event markers render successfully
-* ✅ Incident event is available through the API
-* ✅ FastAPI `/events` endpoint returns event data
-* ✅ FastAPI `/events?type=incident` returns the simulated incident
-* ✅ FastAPI `/heatmap-data` returns congestion data
+- ✅ v2 Leaflet frontend loads successfully
+- ✅ v2 frontend connects to the deployed FastAPI backend
+- ✅ v1 Streamlit dashboard remains available as a backup
+- ✅ 2,606 processed events available
+- ✅ Congestion heatmap endpoint returns data
+- ✅ GIS route and event markers render successfully
+- ✅ RF congestion prediction is available
+- ✅ GBR route-delay prediction is available
+- ✅ Production WebSocket connection succeeds
+- ✅ Live incident broadcast reaches the connected frontend
+- ✅ FastAPI `/events` endpoint returns event data
+- ✅ FastAPI `/events?type=incident` returns incident data
+- ✅ FastAPI `/heatmap-data` returns congestion data
 
 ---
 
