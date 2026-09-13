@@ -47,6 +47,19 @@
                 <p id="busiest-zone-count"></p>
             </div>
 
+            <div class="analytics-card">
+                <h3>Congestion</h3>
+                <strong id="congestion-count">Calculating...</strong>
+                <p>Congestion Events</p>
+            </div>
+
+            <div class="filter-card">
+                <h3>Event Filters</h3>
+                <div id="event-filters">
+                    <p>Loading filters...</p>
+                </div>
+            </div>
+
             <div class="legend">
                 <h3>Event Types</h3>
                 <div><span class="legend-dot pothole"></span> Pothole</div>
@@ -58,6 +71,29 @@
             <div class="chart-card">
                 <h3>Event Breakdown</h3>
                 <canvas id="event-chart"></canvas>
+            </div>
+
+            <div class="prediction-card">
+                <h3>AI Predictions</h3>
+
+                <div class="prediction-item">
+                    <span>Congestion Severity</span>
+                    <strong id="prediction-severity">Loading...</strong>
+                    <small id="prediction-confidence"></small>
+                </div>
+
+                <div class="prediction-item">
+                    <span>Estimated Route Delay</span>
+                    <strong id="prediction-delay">Loading...</strong>
+                    <small>minutes</small>
+                </div>
+
+                <div class="prediction-meta">
+                    <span id="prediction-zone"></span>
+                    <span id="prediction-events"></span>
+                </div>
+
+                <p id="prediction-note" class="prediction-note"></p>
             </div>
 
             <div id="event-details" class="event-details">

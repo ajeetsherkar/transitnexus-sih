@@ -268,3 +268,129 @@ body {
     width: 100% !important;
     height: 300px !important;
 }
+
+/* Session 7 - Event Filters */
+.filter-card {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 15px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.filter-card h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+#event-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px 10px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.filter-option {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    cursor: pointer;
+    word-break: break-word;
+}
+
+.filter-option input {
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Session 7 - Incident Evidence */
+.evidence-section {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid #ddd;
+}
+
+.evidence-section strong {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.evidence-image {
+    display: block;
+    width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background: #f5f5f5;
+}
+
+.ocr-note {
+    margin-top: 10px;
+    padding: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    background: #f8f8f8;
+    border-radius: 6px;
+}
+
+/* Session 7 - ML Predictions */
+.prediction-card {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 15px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.prediction-card h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+
+.prediction-item {
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.prediction-item:last-of-type {
+    border-bottom: none;
+}
+
+.prediction-item span {
+    display: block;
+    font-size: 12px;
+    opacity: 0.75;
+    margin-bottom: 4px;
+}
+
+.prediction-item strong {
+    font-size: 20px;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+.prediction-item small {
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.prediction-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 11px;
+    opacity: 0.75;
+}
+
+.prediction-note {
+    margin: 10px 0 0;
+    padding: 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    background: #f8f8f8;
+    border-radius: 6px;
+}

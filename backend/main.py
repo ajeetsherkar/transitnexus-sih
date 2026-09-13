@@ -2,13 +2,20 @@ from pathlib import Path
 
 import json
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+import joblib
+import pandas as pd
+
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 EVENTS_FILE = BASE_DIR / "data" / "processed" / "events.json"
+ML_FEATURES_FILE = BASE_DIR / "data" / "processed" / "ml" / "ml_features.csv"
+RF_MODEL_FILE = BASE_DIR / "models" / "congestion_rf.joblib"
+GBR_MODEL_FILE = BASE_DIR / "models" / "route_delay_gbr.joblib"
 
 
 app = FastAPI(
@@ -117,6 +124,93 @@ def get_heatmap_data():
         grouped[key]["count"] += 1
 
     return list(grouped.values())
+
+
+@app.get("/predictions")
+def get_predictions():
+    """Return RF congestion severity and GBR delay for the busiest observed zone."""
+    if not ML_FEATURES_FILE.exists():
+        raise HTTPException(status_code=503, detail="ML feature data not available")
+
+    if not RF_MODEL_FILE.exists() or not GBR_MODEL_FILE.exists():
+        raise HTTPException(status_code=503, detail="ML model files not available")
+
+    df = pd.read_csv(ML_FEATURES_FILE)
+
+    if df.empty:
+        raise HTTPException(status_code=503, detail="ML feature data is empty")
+
+    feature_names = [
+        "density_score",
+        "event_count",
+        "pothole_ratio",
+        "congestion_ratio",
+        "pedestrian_risk_ratio",
+        "zone_lat",
+        "zone_lon",
+        "hour",
+        "minute",
+    ]
+
+    missing_features = [
+        feature for feature in feature_names
+        if feature not in df.columns
+    ]
+
+    if missing_features:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Missing ML features: {missing_features}",
+        )
+
+    busiest = df.loc[df["event_count"].idxmax()]
+    X = busiest[feature_names].to_frame().T
+
+    rf_model = joblib.load(RF_MODEL_FILE)
+    gbr_model = joblib.load(GBR_MODEL_FILE)
+
+    severity = str(rf_model.predict(X)[0])
+    probabilities = rf_model.predict_proba(X)[0]
+
+    severity_probabilities = {
+        str(label): round(float(probability), 4)
+        for label, probability in zip(rf_model.classes_, probabilities)
+    }
+
+    delay_minutes = float(gbr_model.predict(X)[0])
+
+    return {
+        "zone": str(busiest["zone"]),
+        "latitude": float(busiest["zone_lat"]),
+        "longitude": float(busiest["zone_lon"]),
+        "event_count": int(busiest["event_count"]),
+        "density_score": float(busiest["density_score"]),
+        "congestion_severity": severity,
+        "severity_probabilities": severity_probabilities,
+        "estimated_delay_minutes": round(delay_minutes, 2),
+        "delay_note": (
+            "Prototype estimate based on the simulated training target; "
+            "not real traffic-delay ground truth."
+        ),
+    }
+
+
+@app.get("/evidence/{filename}")
+def get_evidence(filename: str):
+    """Serve incident evidence images from the controlled evidence directory."""
+    evidence_dir = BASE_DIR / "data" / "processed" / "events" / "incident_frames"
+
+    # Only allow a plain filename; never accept directory traversal paths.
+    safe_name = Path(filename).name
+    if safe_name != filename:
+        raise HTTPException(status_code=400, detail="Invalid evidence filename")
+
+    evidence_file = evidence_dir / safe_name
+
+    if not evidence_file.is_file():
+        raise HTTPException(status_code=404, detail="Evidence image not found")
+
+    return FileResponse(evidence_file)
 
 
 @app.websocket("/ws/alerts")
