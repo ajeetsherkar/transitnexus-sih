@@ -296,6 +296,17 @@ Estimated route delay: 65.41 minutes
 
 > The route-delay value is a prototype estimate based on the simulated training target and is not real traffic-delay ground truth.
 
+### ML Training and Evaluation Evidence
+
+The current prototype uses engineered zone/time-window features generated from the processed event stream.
+
+| Model | Task | Features | Data Source | Train/Test Split | Metric |
+| --- | --- | --- | --- | --- | --- |
+| Random Forest | Congestion severity classification | Density score, event count, event-type ratios, zone latitude/longitude, hour, minute | Engineered features from processed `events.json` | 10 / 4 (75/25, stratified) | Accuracy: 75%; Weighted F1: 0.75 |
+| Gradient Boosting | Route-delay regression | Density score, event count, event-type ratios, zone latitude/longitude, hour, minute | Engineered features from processed `events.json` | 10 / 4 (75/25) | RMSE: 6.7333 minutes |
+
+> **Prototype evaluation note:** The congestion-severity labels are derived from density-score quantiles, while the route-delay target is simulated from observed event density/counts. These metrics demonstrate the implemented ML pipeline on prototype data; they are not claims of real-world traffic prediction accuracy.
+
 ### ONNX Export and Benchmark
 
 The YOLO models are exported to ONNX to establish a portable inference representation for future edge deployment.
