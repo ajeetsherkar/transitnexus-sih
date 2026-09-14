@@ -36,6 +36,28 @@
         <aside class="sidebar">
             <h2>Event Intelligence</h2>
 
+            <div class="fleet-panel">
+                <h3>Fleet Status</h3>
+                <div class="fleet-stats">
+                    <div class="fleet-stat">
+                        <span>Active Buses</span>
+                        <strong id="fleet-active-buses">—</strong>
+                    </div>
+                    <div class="fleet-stat">
+                        <span>Online Cameras</span>
+                        <strong id="fleet-online-cameras">—</strong>
+                    </div>
+                    <div class="fleet-stat">
+                        <span>Alerts Today</span>
+                        <strong id="fleet-alerts-today">—</strong>
+                    </div>
+                    <div class="fleet-stat">
+                        <span>High-Congestion Zones</span>
+                        <strong id="fleet-high-congestion-zones">—</strong>
+                    </div>
+                </div>
+            </div>
+
             <div class="stat-card">
                 <span>Total Events</span>
                 <strong id="event-count">0</strong>
@@ -85,7 +107,15 @@
                 <canvas id="event-chart"></canvas>
             </div>
 
-            <div class="prediction-card">
+            <div class="analytics-card alert-timeline-card">
+            <h3>Recent Alerts</h3>
+            <p class="timeline-note">Latest detected events</p>
+            <div id="alert-timeline">
+                <p>Loading alerts...</p>
+            </div>
+        </div>
+
+        <div class="prediction-card">
                 <h3>AI Predictions</h3>
 
                 <div class="prediction-item">

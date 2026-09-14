@@ -88,6 +88,7 @@ const predictionDelayElement = document.getElementById("prediction-delay");
 const predictionZoneElement = document.getElementById("prediction-zone");
 const predictionEventsElement = document.getElementById("prediction-events");
 const predictionNoteElement = document.getElementById("prediction-note");
+const alertTimelineElement = document.getElementById("alert-timeline");
 const zoneSummaryZoneElement = document.getElementById("zone-summary-zone");
 const zoneSummaryVehiclesElement = document.getElementById("zone-summary-vehicles");
 const zoneSummaryIncidentsElement = document.getElementById("zone-summary-incidents");
@@ -95,6 +96,10 @@ const zoneSummaryPotholesElement = document.getElementById("zone-summary-pothole
 const zoneSummaryPedestrianElement = document.getElementById("zone-summary-pedestrian");
 const zoneSummaryConfidenceElement = document.getElementById("zone-summary-confidence");
 const zoneSummaryCongestionElement = document.getElementById("zone-summary-congestion");
+const fleetActiveBusesElement = document.getElementById("fleet-active-buses");
+const fleetOnlineCamerasElement = document.getElementById("fleet-online-cameras");
+const fleetAlertsTodayElement = document.getElementById("fleet-alerts-today");
+const fleetHighCongestionZonesElement = document.getElementById("fleet-high-congestion-zones");
 
 let eventChart = null;
 let heatLayer = null;
@@ -425,6 +430,85 @@ function createEventFilters(events) {
     console.log(`Created ${eventTypes.length} event-type filters`);
 }
 
+
+function updateFleetPanel(events) {
+    const busIds = new Set();
+    const cameraIds = new Set();
+    const alertTypes = new Set(["incident", "pothole", "pedestrian_risk", "congestion"]);
+    const highCongestionZones = new Set();
+
+    events.forEach((event) => {
+        if (event.bus_id) {
+            busIds.add(event.bus_id);
+        }
+
+        if (event.camera_id) {
+            cameraIds.add(event.camera_id);
+        }
+
+        if (
+            event.event_type === "congestion" &&
+            typeof event.lat === "number" &&
+            typeof event.lon === "number"
+        ) {
+            const zone = `${event.lat.toFixed(3)},${event.lon.toFixed(3)}`;
+            highCongestionZones.add(zone);
+        }
+    });
+
+    const alertsToday = events.filter((event) =>
+        alertTypes.has(event.event_type)
+    ).length;
+
+    fleetActiveBusesElement.textContent = busIds.size;
+    fleetOnlineCamerasElement.textContent = cameraIds.size;
+    fleetAlertsTodayElement.textContent = alertsToday;
+    fleetHighCongestionZonesElement.textContent = highCongestionZones.size;
+
+    console.log(
+        `Fleet panel updated: ${busIds.size} buses, ` +
+        `${cameraIds.size} cameras, ${alertsToday} alerts, ` +
+        `${highCongestionZones.size} high-congestion zones`
+    );
+}
+
+
+function renderAlertTimeline(events) {
+    if (!alertTimelineElement) {
+        return;
+    }
+
+    const latestEvents = [...events]
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+        .slice(-8)
+        .reverse();
+
+    if (latestEvents.length === 0) {
+        alertTimelineElement.innerHTML = "<p>No recent alerts.</p>";
+        return;
+    }
+
+    alertTimelineElement.innerHTML = latestEvents
+        .map((event) => {
+            const date = new Date(event.timestamp);
+            const time = Number.isNaN(date.getTime())
+                ? "—"
+                : date.toISOString().substring(11, 19);
+
+            const eventType = String(event.event_type || "unknown")
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (char) => char.toUpperCase());
+
+            return `
+                <div class="timeline-item">
+                    <span class="timeline-time">${time}</span>
+                    <span class="timeline-event">${eventType}</span>
+                </div>
+            `;
+        })
+        .join("");
+}
+
 async function loadPredictions() {
     try {
         const response = await fetch(`${API_URL}/predictions`);
@@ -488,6 +572,8 @@ async function loadEvents() {
         const events = await response.json();
 
         allEvents = events;
+        updateFleetPanel(events);
+        renderAlertTimeline(events);
 
         eventCountElement.textContent = events.length;
 
