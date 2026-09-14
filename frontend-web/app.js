@@ -88,6 +88,13 @@ const predictionDelayElement = document.getElementById("prediction-delay");
 const predictionZoneElement = document.getElementById("prediction-zone");
 const predictionEventsElement = document.getElementById("prediction-events");
 const predictionNoteElement = document.getElementById("prediction-note");
+const zoneSummaryZoneElement = document.getElementById("zone-summary-zone");
+const zoneSummaryVehiclesElement = document.getElementById("zone-summary-vehicles");
+const zoneSummaryIncidentsElement = document.getElementById("zone-summary-incidents");
+const zoneSummaryPotholesElement = document.getElementById("zone-summary-potholes");
+const zoneSummaryPedestrianElement = document.getElementById("zone-summary-pedestrian");
+const zoneSummaryConfidenceElement = document.getElementById("zone-summary-confidence");
+const zoneSummaryCongestionElement = document.getElementById("zone-summary-congestion");
 
 let eventChart = null;
 let heatLayer = null;
@@ -565,6 +572,58 @@ async function loadHeatmap() {
     }
 }
 
+
+async function loadZoneSummary() {
+    try {
+        const response = await fetch(`${API_URL}/zone-summary`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const summaries = await response.json();
+
+        if (!Array.isArray(summaries) || summaries.length === 0) {
+            zoneSummaryZoneElement.textContent = "No zone data";
+            return;
+        }
+
+        const busiestZone = summaries.reduce(
+            (current, item) =>
+                item.vehicle_count > current.vehicle_count ? item : current,
+            summaries[0]
+        );
+
+        zoneSummaryZoneElement.textContent =
+            `Zone ${busiestZone.zone} · 15-minute window`;
+
+        zoneSummaryVehiclesElement.textContent =
+            busiestZone.vehicle_count;
+
+        zoneSummaryIncidentsElement.textContent =
+            busiestZone.incident_count;
+
+        zoneSummaryPotholesElement.textContent =
+            busiestZone.pothole_count;
+
+        zoneSummaryPedestrianElement.textContent =
+            busiestZone.pedestrian_risk_count;
+
+        zoneSummaryConfidenceElement.textContent =
+            `${(busiestZone.average_confidence * 100).toFixed(1)}%`;
+
+        zoneSummaryCongestionElement.textContent =
+            busiestZone.congestion_level;
+
+        console.log(
+            `Loaded zone summary for ${busiestZone.zone}`
+        );
+    } catch (error) {
+        zoneSummaryZoneElement.textContent = "Unavailable";
+        console.error("Failed to load zone summary:", error);
+    }
+}
+
 function connectWebSocket() {
     console.log(`Connecting to WebSocket: ${WS_URL}`);
 
@@ -621,6 +680,7 @@ async function initializeDashboard() {
     await loadEvents();
     await loadHeatmap();
     await loadPredictions();
+    await loadZoneSummary();
     connectWebSocket();
 }
 

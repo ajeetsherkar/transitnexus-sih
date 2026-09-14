@@ -126,6 +126,115 @@ def get_heatmap_data():
     return list(grouped.values())
 
 
+@app.get("/zone-summary")
+def get_zone_summary():
+    """Return 15-minute spatial summaries for observed fleet zones."""
+    events = load_events()
+
+    if not events:
+        return []
+
+    vehicle_types = {"car", "bus", "truck", "motorcycle", "bicycle"}
+
+    # Use elapsed time from the first event so the prototype's
+    # video-relative timestamps can still be grouped temporally.
+    timestamps = [
+        pd.Timestamp(event["timestamp"])
+        for event in events
+        if event.get("timestamp")
+    ]
+
+    if not timestamps:
+        return []
+
+    start_time = min(timestamps)
+    grouped = {}
+
+    for event in events:
+        if "lat" not in event or "lon" not in event:
+            continue
+
+        timestamp = pd.Timestamp(event["timestamp"])
+        elapsed_seconds = (timestamp - start_time).total_seconds()
+        window_start_seconds = int(elapsed_seconds // 900) * 900
+
+        lat = round(float(event["lat"]), 3)
+        lon = round(float(event["lon"]), 3)
+
+        key = (lat, lon, window_start_seconds)
+
+        if key not in grouped:
+            grouped[key] = {
+                "zone": f"{lat}_{lon}",
+                "latitude": lat,
+                "longitude": lon,
+                "window_start_seconds": window_start_seconds,
+                "window_end_seconds": window_start_seconds + 900,
+                "vehicle_count": 0,
+                "incident_count": 0,
+                "pothole_count": 0,
+                "pedestrian_risk_count": 0,
+                "congestion_count": 0,
+                "confidence_total": 0.0,
+                "confidence_count": 0,
+            }
+
+        summary = grouped[key]
+        event_type = str(event.get("event_type", "")).lower()
+
+        if event_type in vehicle_types:
+            summary["vehicle_count"] += 1
+
+        if event_type == "incident":
+            summary["incident_count"] += 1
+
+        if event_type == "pothole":
+            summary["pothole_count"] += 1
+
+        if event_type == "pedestrian_risk":
+            summary["pedestrian_risk_count"] += 1
+
+        if event_type == "congestion":
+            summary["congestion_count"] += 1
+
+        confidence = event.get("confidence")
+        if confidence is not None:
+            summary["confidence_total"] += float(confidence)
+            summary["confidence_count"] += 1
+
+    results = []
+
+    for summary in grouped.values():
+        confidence_count = summary.pop("confidence_count")
+        confidence_total = summary.pop("confidence_total")
+
+        average_confidence = (
+            confidence_total / confidence_count
+            if confidence_count
+            else 0.0
+        )
+
+        if summary["congestion_count"] > 0:
+            congestion_level = "HIGH"
+        elif summary["vehicle_count"] >= 100:
+            congestion_level = "MEDIUM"
+        else:
+            congestion_level = "LOW"
+
+        summary["average_confidence"] = round(average_confidence, 3)
+        summary["congestion_level"] = congestion_level
+        results.append(summary)
+
+    results.sort(
+        key=lambda item: (
+            item["window_start_seconds"],
+            -item["vehicle_count"],
+        )
+    )
+
+    return results
+
+
 @app.get("/predictions")
 def get_predictions():
     """Return RF congestion severity and GBR delay for the busiest observed zone."""
