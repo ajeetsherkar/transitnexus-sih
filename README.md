@@ -613,6 +613,23 @@ The system is therefore intended as a **demo-grade proof of concept**, not a pro
 
 ---
 
+## Real vs Simulated vs Production
+
+The current system validates the complete event-to-intelligence pipeline using processed video and simulated fleet/location data. The production architecture is designed to connect the same event schema and intelligence pipeline to live bus-mounted camera and GPS feeds.
+
+| Component | Current State | Production Plan |
+|---|---|---|
+| Video feed | Processed sample traffic/fleet video clips | Live bus-mounted camera feeds |
+| GPS | Simulated route/location data | Real GPS telemetry from buses |
+| OCR / Plate | Mock OCR / plate fallback for prototype validation | Production-grade ALPR/OCR pipeline |
+| Congestion / Delay Models | Prototype-trained models using the available demonstration data | Retrain and validate using real-world traffic and fleet ground-truth data |
+| Event Storage | Structured JSON event storage | Production database / persistent event store |
+### Judge-Ready Answer
+
+> “We validated the full event-to-intelligence pipeline using processed video and simulated fleet/location data. The production version connects the same event schema to real bus-mounted camera and GPS feeds.”
+
+---
+
 ## Prototype Limitations
 
 The current prototype has several deliberate limitations.
