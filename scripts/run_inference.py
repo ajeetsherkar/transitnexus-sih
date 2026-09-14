@@ -68,6 +68,9 @@ def create_event(
         "lon": round(lon, 6),
         "timestamp": format_timestamp(timestamp_seconds),
         "frame_path": frame_path,
+        "bus_id": "BUS-102",
+        "route_id": "R17",
+        "camera_id": "CAM-102-FRONT",
     }
 
     if density_score is not None:
