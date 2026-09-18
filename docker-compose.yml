@@ -12,7 +12,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: dashboard/Dockerfile
     container_name: transitnexus-frontend
     ports:
       - "8501:8501"

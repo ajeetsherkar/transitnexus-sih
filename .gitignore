@@ -8,16 +8,20 @@ __pycache__/
 # OS files
 .DS_Store
 
-# Ultralytics
-runs/
-*.pt
-
 # Environment / secrets
 .env
 .env.*
+!.env.example
+
+# Models and generated ML files
+*.pt
+*.onnx
+*.db
+runs/
+
+# Evidence and generated data
+evidence/
+data/
 
 # Temporary files
 *.part
-
-# Generated event crops
-data/processed/events/*.jpg
