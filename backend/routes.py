@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth import get_bus_from_api_key, require_admin_token, require_read_token
 from backend.db import get_db
+from backend.dedup import apply_report
 from backend.models import Bus, Incident, Position, Report
 from backend.schemas import EventIn, HeartbeatIn
 
@@ -58,12 +59,26 @@ def ingest_event(
     )
 
     db.add(report)
+    db.flush()
+
+    # Deduplicate supported incident types.
+    # traffic_density remains a raw report for later zone aggregation.
+    incident = None
+    if event.type.value != "traffic_density":
+        incident = apply_report(db, report)
+
     db.commit()
 
-    return {
+    response = {
         "status": "accepted",
         "event_id": event_id,
     }
+
+    if incident is not None:
+        response["incident_id"] = incident.id
+        response["incident_status"] = incident.status
+
+    return response
 
 
 @router.post("/heartbeat")
