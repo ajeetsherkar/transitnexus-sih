@@ -25,3 +25,6 @@ data/
 
 # Temporary files
 *.part
+
+# Local simulator API keys
+keys.json
