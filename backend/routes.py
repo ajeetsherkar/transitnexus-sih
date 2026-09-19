@@ -515,3 +515,162 @@ def get_zones(
         }
         for zone_id in rows
     ]
+
+
+@router.get("/dashboard")
+def get_dashboard_snapshot(
+    db: Session = Depends(get_db),
+):
+    """Return a public, read-only snapshot for the dashboard."""
+    buses = db.execute(
+        select(Bus).order_by(Bus.bus_id)
+    ).scalars().all()
+
+    now = datetime.now(timezone.utc)
+    bus_results = []
+
+    for bus in buses:
+        latest = db.execute(
+            select(Position)
+            .where(Position.bus_id == bus.bus_id)
+            .order_by(Position.ts.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        latest_report = db.execute(
+            select(Report)
+            .where(Report.bus_id == bus.bus_id)
+            .order_by(Report.ts.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        source = (
+            latest_report.source
+            if latest_report is not None
+            else "unknown"
+        )
+
+        if latest is None:
+            bus_results.append(
+                {
+                    "bus_id": bus.bus_id,
+                    "camera_id": bus.camera_id,
+                    "route_id": bus.route_id,
+                    "latest_position": None,
+                    "online": False,
+                    "age_s": None,
+                    "source": source,
+                }
+            )
+            continue
+
+        latest_ts = latest.ts
+        if latest_ts.tzinfo is None:
+            latest_ts = latest_ts.replace(tzinfo=timezone.utc)
+        else:
+            latest_ts = latest_ts.astimezone(timezone.utc)
+
+        age_s = max(
+            0.0,
+            (now - latest_ts).total_seconds(),
+        )
+
+        bus_results.append(
+            {
+                "bus_id": bus.bus_id,
+                "camera_id": bus.camera_id,
+                "route_id": bus.route_id,
+                "latest_position": {
+                    "lat": latest.lat,
+                    "lon": latest.lon,
+                    "accuracy_m": latest.accuracy_m,
+                    "speed_kmh": latest.speed_kmh,
+                    "heading": latest.heading,
+                    "ts": latest.ts,
+                },
+                "online": age_s <= 15,
+                "age_s": round(age_s, 3),
+                "source": source,
+            }
+        )
+
+    incidents = db.execute(
+        select(Incident).order_by(Incident.last_seen.desc())
+    ).scalars().all()
+
+    incident_results = [
+        {
+            "id": incident.id,
+            "type": incident.type,
+            "status": incident.status,
+            "lat": incident.lat,
+            "lon": incident.lon,
+            "first_seen": incident.first_seen,
+            "last_seen": incident.last_seen,
+            "report_count": incident.report_count,
+            "bus_count": incident.bus_count,
+            "confidence": incident.confidence,
+            "severity": incident.severity,
+            "zone_id": incident.zone_id,
+            "resolved_at": incident.resolved_at,
+            "recurrence_of": incident.recurrence_of,
+        }
+        for incident in incidents
+    ]
+
+    bus_count = db.execute(
+        select(func.count()).select_from(Bus)
+    ).scalar_one()
+
+    report_count = db.execute(
+        select(func.count()).select_from(Report)
+    ).scalar_one()
+
+    incident_count = db.execute(
+        select(func.count()).select_from(Incident)
+    ).scalar_one()
+
+    open_incident_count = db.execute(
+        select(func.count())
+        .select_from(Incident)
+        .where(Incident.status != "resolved")
+    ).scalar_one()
+
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    reports_today = db.execute(
+        select(func.count())
+        .select_from(Report)
+        .where(Report.ts >= today_start)
+    ).scalar_one()
+
+    online_count = sum(1 for bus in bus_results if bus["online"])
+
+    stats = {
+        "buses": bus_count,
+        "buses_online": online_count,
+        "buses_offline": bus_count - online_count,
+        "reports": report_count,
+        "reports_today": reports_today,
+        "incidents": incident_count,
+        "incidents_detected": sum(
+            1 for incident in incidents
+            if incident.status == "DETECTED"
+        ),
+        "incidents_verified": sum(
+            1 for incident in incidents
+            if incident.status == "VERIFIED"
+        ),
+        "open_incidents": open_incident_count,
+    }
+
+    return {
+        "buses": bus_results,
+        "incidents": incident_results,
+        "stats": stats,
+    }

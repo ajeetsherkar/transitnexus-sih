@@ -200,3 +200,17 @@ def test_stats_reports_today(client, bus, db_session):
 
     assert "reports_today" in data
     assert data["reports_today"] == before + 1
+
+
+def test_dashboard_snapshot_is_public(client, bus):
+    response = client.get("/v1/dashboard")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert "buses" in data
+    assert "incidents" in data
+    assert "stats" in data
+    assert isinstance(data["buses"], list)
+    assert isinstance(data["incidents"], list)
+    assert isinstance(data["stats"], dict)
