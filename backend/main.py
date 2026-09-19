@@ -363,3 +363,29 @@ async def test_broadcast_incident():
         "event": test_event,
         "connected_clients": len(connected_clients),
     }
+
+
+# Round 3 API routes
+from backend.routes import router as round3_router
+
+app.include_router(round3_router)
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    """Public health check for the central backend."""
+    from sqlalchemy import text
+    from backend.db import engine
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {
+            "status": "ok",
+            "database": "ok",
+        }
+    except Exception:
+        return {
+            "status": "degraded",
+            "database": "error",
+        }

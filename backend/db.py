@@ -29,3 +29,13 @@ engine = create_engine(
 
 def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
+
+
+def get_db():
+    from sqlalchemy.orm import Session
+
+    db = Session(engine)
+    try:
+        yield db
+    finally:
+        db.close()
