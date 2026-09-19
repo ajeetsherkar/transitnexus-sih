@@ -155,7 +155,6 @@ def get_buses(
     db: Session = Depends(get_db),
 ):
     """Return fleet state using the latest heartbeat for each bus."""
-
     buses = db.execute(
         select(Bus).order_by(Bus.bus_id)
     ).scalars().all()
@@ -171,6 +170,19 @@ def get_buses(
             .limit(1)
         ).scalar_one_or_none()
 
+        latest_report = db.execute(
+            select(Report)
+            .where(Report.bus_id == bus.bus_id)
+            .order_by(Report.ts.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        source = (
+            latest_report.source
+            if latest_report is not None
+            else "unknown"
+        )
+
         if latest is None:
             results.append(
                 {
@@ -180,6 +192,7 @@ def get_buses(
                     "latest_position": None,
                     "online": False,
                     "age_s": None,
+                    "source": source,
                 }
             )
             continue
@@ -210,11 +223,11 @@ def get_buses(
                 },
                 "online": age_s <= 15,
                 "age_s": round(age_s, 3),
+                "source": source,
             }
         )
 
     return results
-
 
 
 @router.get("/incidents")
@@ -353,9 +366,23 @@ def get_stats(
         .where(Incident.status != "resolved")
     ).scalar_one()
 
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    reports_today = db.execute(
+        select(func.count())
+        .select_from(Report)
+        .where(Report.ts >= today_start)
+    ).scalar_one()
+
     return {
         "buses": bus_count,
         "reports": report_count,
+        "reports_today": reports_today,
         "incidents": incident_count,
         "open_incidents": open_incident_count,
     }

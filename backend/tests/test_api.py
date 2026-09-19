@@ -116,6 +116,7 @@ def test_heartbeat_online(client, bus):
 
     assert test_bus["online"] is True
     assert test_bus["latest_position"] is not None
+    assert test_bus["source"] == "live"
 
 
 def test_read_endpoint_requires_read_token(client, bus):
@@ -143,3 +144,59 @@ def test_future_event_is_rejected(client, bus):
     )
 
     assert response.status_code == 422
+
+
+def test_stats_reports_today(client, bus, db_session):
+    from datetime import datetime, timezone, timedelta
+
+    from backend.models import Report
+
+    now = datetime.now(timezone.utc)
+
+    before = db_session.query(Report).filter(
+        Report.ts >= now.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    ).count()
+
+    db_session.add_all(
+        [
+            Report(
+                event_id="00000000-0000-0000-0000-000000000001",
+                bus_id=bus.bus_id,
+                type="pothole",
+                confidence=0.9,
+                lat=19.9021,
+                lon=74.4944,
+                accuracy_m=8.0,
+                ts=now,
+                source="simulated",
+            ),
+            Report(
+                event_id="00000000-0000-0000-0000-000000000002",
+                bus_id=bus.bus_id,
+                type="pothole",
+                confidence=0.9,
+                lat=19.9021,
+                lon=74.4944,
+                accuracy_m=8.0,
+                ts=now - timedelta(days=1),
+                source="simulated",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/v1/stats",
+        headers={"X-Read-Token": TEST_READ_TOKEN},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert "reports_today" in data
+    assert data["reports_today"] == before + 1
