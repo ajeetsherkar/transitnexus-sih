@@ -28,3 +28,4 @@ data/
 
 # Local simulator API keys
 keys.json
+cloud_keys.json

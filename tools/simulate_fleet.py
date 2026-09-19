@@ -422,6 +422,11 @@ def main() -> None:
         type=Path,
         required=True,
     )
+    parser.add_argument(
+        "--bus-prefix",
+        default="SIM-BUS",
+        help="Bus ID prefix. Default: SIM-BUS",
+    )
 
     parser.add_argument(
         "--scenario",
@@ -474,7 +479,7 @@ def main() -> None:
     keys = load_keys(args.keys)
 
     required_ids = [
-        f"SIM-BUS-{i:03d}"
+        f"{args.bus_prefix}-{i:03d}"
         for i in range(1, args.buses + 1)
     ]
 
@@ -534,7 +539,7 @@ def main() -> None:
 
     if args.scenario == "offline-bus":
         print(
-            f"Offline bus: SIM-BUS-{args.offline_bus:03d}"
+            f"Offline bus: {args.bus_prefix}-{args.offline_bus:03d}"
         )
 
     print("=" * 64)
@@ -542,7 +547,7 @@ def main() -> None:
     threads = []
 
     for i in range(1, args.buses + 1):
-        bus_id = f"SIM-BUS-{i:03d}"
+        bus_id = f"{args.bus_prefix}-{i:03d}"
         # In the same-pothole proof, every bus must travel the
         # route containing the shared pothole so all buses can
         # independently report the same physical incident.
