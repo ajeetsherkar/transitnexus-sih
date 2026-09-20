@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransitNexus — Control Center</title>
+    <link rel="stylesheet" href="/dashboard/vendor/leaflet.css">
+    <link rel="stylesheet" href="/dashboard/style.css">
+</head>
+<body>
+    <div id="access-overlay" class="access-overlay">
+        <form id="access-form" class="access-card">
+            <div class="brand-mark">TN</div>
+            <h1>TransitNexus</h1>
+            <p>Control Center</p>
+            <label for="access-code">Access code</label>
+            <input
+                id="access-code"
+                name="access-code"
+                type="password"
+                autocomplete="off"
+                required
+                autofocus
+            >
+            <button type="submit">Enter Control Center</button>
+            <div id="access-error" class="access-error" role="alert"></div>
+        </form>
+    </div>
+
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark">TN</div>
+            <div>
+                <h1>TransitNexus</h1>
+                <p>AI-Powered Mobile Urban Intelligence</p>
+            </div>
+        </div>
+        <div id="connection-status" class="status">Connecting...</div>
+    </header>
+
+    <main class="control-center">
+        <section class="kpi-strip" aria-label="Fleet KPIs">
+            <article class="kpi-card">
+                <span>Buses Online</span>
+                <strong id="kpi-online">—</strong>
+            </article>
+            <article class="kpi-card">
+                <span>Buses Offline</span>
+                <strong id="kpi-offline">—</strong>
+            </article>
+            <article class="kpi-card">
+                <span>Open Incidents</span>
+                <strong id="kpi-open-incidents">—</strong>
+            </article>
+            <article class="kpi-card">
+                <span>Reports Today</span>
+                <strong id="kpi-reports-today">—</strong>
+            </article>
+        </section>
+
+        <section class="workspace">
+            <div class="map-card">
+                <div id="map"></div>
+                <div class="map-legend">
+                    <span><i class="legend-bus online"></i> Online bus</span>
+                    <span><i class="legend-bus offline"></i> Offline bus</span>
+                    <span><i class="legend-incident detected"></i> Detected</span>
+                    <span><i class="legend-incident verified"></i> Verified</span>
+                    <span><i class="legend-incident resolved"></i> Resolved</span>
+                </div>
+            </div>
+
+            <aside class="alerts-panel">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Live Alerts</h2>
+                        <p>Newest incidents from the fleet</p>
+                    </div>
+                    <span id="last-updated">—</span>
+                </div>
+
+                <div id="alerts-list" class="alerts-list">
+                    <div class="empty-state">Waiting for incident data...</div>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="/dashboard/vendor/leaflet.js"></script>
+    <script src="/dashboard/app.js"></script>
+</body>
+</html>

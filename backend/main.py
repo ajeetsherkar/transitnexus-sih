@@ -8,6 +8,7 @@ import pandas as pd
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -30,6 +31,14 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+
+CONTROL_CENTER_DIR = BASE_DIR / "dashboard" / "control-center"
+app.mount(
+    "/dashboard",
+    StaticFiles(directory=CONTROL_CENTER_DIR, html=True),
+    name="control-center",
 )
 
 
