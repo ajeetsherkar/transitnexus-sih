@@ -363,7 +363,7 @@ def get_stats(
     open_incident_count = db.execute(
         select(func.count())
         .select_from(Incident)
-        .where(Incident.status != "resolved")
+        .where(Incident.status != "RESOLVED")
     ).scalar_one()
 
     today_start = datetime.now(timezone.utc).replace(
@@ -450,7 +450,7 @@ def resolve_incident(
         )
 
     now = datetime.now(timezone.utc)
-    incident.status = "resolved"
+    incident.status = "RESOLVED"
     incident.resolved_at = now
     incident.last_seen = max(
         incident.last_seen.replace(tzinfo=timezone.utc)
@@ -463,7 +463,7 @@ def resolve_incident(
     db.refresh(incident)
 
     return {
-        "status": "resolved",
+        "status": "RESOLVED",
         "incident_id": incident.id,
         "resolved_at": incident.resolved_at,
     }
@@ -633,7 +633,7 @@ def get_dashboard_snapshot(
     open_incident_count = db.execute(
         select(func.count())
         .select_from(Incident)
-        .where(Incident.status != "resolved")
+        .where(Incident.status != "RESOLVED")
     ).scalar_one()
 
     today_start = datetime.now(timezone.utc).replace(
