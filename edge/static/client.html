@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>TransitNexus — Edge Camera</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #0b0f14;
+      color: #f4f7fb;
+    }
+
+    header {
+      padding: 12px 14px;
+      background: #111821;
+      border-bottom: 1px solid #26313d;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+    }
+
+    .subtitle {
+      color: #9eabb8;
+      font-size: 12px;
+    }
+
+    .controls {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    input, button {
+      width: 100%;
+      min-height: 44px;
+      border-radius: 8px;
+      border: 1px solid #344250;
+      background: #151d26;
+      color: #fff;
+      padding: 9px 11px;
+      font-size: 15px;
+    }
+
+    button {
+      background: #1769aa;
+      border-color: #2586d1;
+      font-weight: 700;
+    }
+
+    button.stop {
+      background: #6d2930;
+      border-color: #93414a;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+    }
+
+    .status {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      padding: 0 12px 12px;
+    }
+
+    .card {
+      background: #111821;
+      border: 1px solid #26313d;
+      border-radius: 8px;
+      padding: 8px 10px;
+      min-height: 54px;
+    }
+
+    .label {
+      color: #8f9dab;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .value {
+      margin-top: 3px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    #viewport {
+      position: relative;
+      width: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #video {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 70vh;
+      object-fit: contain;
+      background: #000;
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    #message {
+      padding: 10px 12px;
+      color: #9eabb8;
+      font-size: 12px;
+      min-height: 34px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TransitNexus Edge</h1>
+    <div class="subtitle">Round 3 phone camera + AI streaming</div>
+  </header>
+
+  <section class="controls">
+    <input id="busId" type="text" autocomplete="username"
+           placeholder="Bus ID" aria-label="Bus ID">
+    <input id="busKey" type="password" autocomplete="current-password"
+           placeholder="Bus key" aria-label="Bus key">
+    <button id="startButton">Start camera</button>
+    <button id="stopButton" class="stop" disabled>Stop</button>
+  </section>
+
+  <section class="status">
+    <div class="card">
+      <div class="label">Connection</div>
+      <div class="value" id="connection">offline</div>
+    </div>
+    <div class="card">
+      <div class="label">GPS accuracy</div>
+      <div class="value" id="gpsAccuracy">—</div>
+    </div>
+    <div class="card">
+      <div class="label">FPS</div>
+      <div class="value" id="fps">0.0</div>
+    </div>
+    <div class="card">
+      <div class="label">Bus</div>
+      <div class="value" id="busStatus">—</div>
+    </div>
+  </section>
+
+  <main id="viewport">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </main>
+
+  <div id="message">Ready.</div>
+
+  <script type="module">
+    const busInput = document.getElementById("busId");
+    const keyInput = document.getElementById("busKey");
+    const startButton = document.getElementById("startButton");
+    const stopButton = document.getElementById("stopButton");
+
+    const connectionEl = document.getElementById("connection");
+    const gpsAccuracyEl = document.getElementById("gpsAccuracy");
+    const fpsEl = document.getElementById("fps");
+    const busStatusEl = document.getElementById("busStatus");
+    const messageEl = document.getElementById("message");
+
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const overlayCtx = overlay.getContext("2d");
+
+    const frameCanvas = document.createElement("canvas");
+    const frameCtx = frameCanvas.getContext("2d", { alpha: false });
+
+    const savedBus = localStorage.getItem("transitnexus_bus_id");
+    const savedKey = localStorage.getItem("transitnexus_bus_key");
+
+    if (savedBus) busInput.value = savedBus;
+    if (savedKey) keyInput.value = savedKey;
+
+    let ws = null;
+    let stream = null;
+    let gpsWatchId = null;
+    let wakeLock = null;
+    let position = null;
+    let busy = false;
+    let captureTimer = null;
+    let stopped = true;
+    let framesReceived = 0;
+    let fpsWindowStart = performance.now();
+
+    function setMessage(text) {
+      messageEl.textContent = text;
+    }
+
+    function setConnection(value) {
+      connectionEl.textContent = value;
+    }
+
+    function resizeOverlay() {
+      if (!video.videoWidth || !video.videoHeight) return;
+
+      const rect = video.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      overlay.width = Math.round(rect.width * dpr);
+      overlay.height = Math.round(rect.height * dpr);
+      overlay.style.width = `${rect.width}px`;
+      overlay.style.height = `${rect.height}px`;
+
+      overlayCtx.setTransform(
+        overlay.width / rect.width,
+        0,
+        0,
+        overlay.height / rect.height,
+        0,
+        0
+      );
+    }
+
+    function clearOverlay() {
+      overlayCtx.clearRect(0, 0, overlay.clientWidth, overlay.clientHeight);
+    }
+
+    function drawBoxes(boxes = []) {
+      resizeOverlay();
+      clearOverlay();
+
+      const displayWidth = overlay.clientWidth;
+      const displayHeight = overlay.clientHeight;
+
+      if (!displayWidth || !displayHeight || !video.videoWidth) return;
+
+      const scaleX = displayWidth / video.videoWidth;
+      const scaleY = displayHeight / video.videoHeight;
+
+      overlayCtx.lineWidth = 3;
+      overlayCtx.font = "bold 14px system-ui";
+
+      for (const box of boxes) {
+        if (!Array.isArray(box.bbox) || box.bbox.length !== 4) continue;
+
+        const [x1, y1, x2, y2] = box.bbox;
+        const x = x1 * scaleX;
+        const y = y1 * scaleY;
+        const width = (x2 - x1) * scaleX;
+        const height = (y2 - y1) * scaleY;
+
+        overlayCtx.strokeStyle =
+          box.label === "pothole" ? "#ff4d4d" :
+          box.label === "person" ? "#ffd43b" :
+          "#39d98a";
+
+        overlayCtx.strokeRect(x, y, width, height);
+
+        const track = box.track_id != null
+          ? ` #${box.track_id}`
+          : "";
+
+        const confidence = Number.isFinite(box.confidence)
+          ? ` ${(box.confidence * 100).toFixed(0)}%`
+          : "";
+
+        const label = `${box.label}${track}${confidence}`;
+        const textWidth = overlayCtx.measureText(label).width;
+
+        overlayCtx.fillStyle = overlayCtx.strokeStyle;
+        overlayCtx.fillRect(x, Math.max(0, y - 20), textWidth + 8, 20);
+
+        overlayCtx.fillStyle = "#000";
+        overlayCtx.fillText(label, x + 4, Math.max(14, y - 5));
+      }
+    }
+
+    function updateFps() {
+      const now = performance.now();
+      const elapsed = now - fpsWindowStart;
+
+      if (elapsed >= 1000) {
+        const fps = (framesReceived * 1000) / elapsed;
+        fpsEl.textContent = fps.toFixed(1);
+        framesReceived = 0;
+        fpsWindowStart = now;
+      }
+    }
+
+    function startGps() {
+      if (!navigator.geolocation) {
+        setMessage("Geolocation is not available in this browser.");
+        return;
+      }
+
+      gpsWatchId = navigator.geolocation.watchPosition(
+        (p) => {
+          position = {
+            lat: p.coords.latitude,
+            lon: p.coords.longitude,
+            acc: p.coords.accuracy,
+            speed: p.coords.speed,
+            heading: p.coords.heading
+          };
+
+          gpsAccuracyEl.textContent =
+            Number.isFinite(position.acc)
+              ? `${position.acc.toFixed(1)} m`
+              : "—";
+        },
+        (error) => {
+          gpsAccuracyEl.textContent = "error";
+          setMessage(`GPS error: ${error.message}`);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 10000
+        }
+      );
+    }
+
+    async function requestWakeLock() {
+      try {
+        if ("wakeLock" in navigator) {
+          wakeLock = await navigator.wakeLock.request("screen");
+          wakeLock.addEventListener("release", () => {
+            wakeLock = null;
+          });
+        }
+      } catch (error) {
+        console.warn("Wake Lock unavailable:", error);
+      }
+    }
+
+    async function reconnectWakeLock() {
+      if (!stopped && document.visibilityState === "visible") {
+        await requestWakeLock();
+      }
+    }
+
+    async function sendNextFrame() {
+      if (
+        stopped ||
+        busy ||
+        !ws ||
+        ws.readyState !== WebSocket.OPEN ||
+        !position ||
+        !video.videoWidth ||
+        !video.videoHeight
+      ) {
+        return;
+      }
+
+      const targetWidth = 640;
+      const targetHeight = Math.round(
+        targetWidth * video.videoHeight / video.videoWidth
+      );
+
+      frameCanvas.width = targetWidth;
+      frameCanvas.height = targetHeight;
+
+      frameCtx.drawImage(
+        video,
+        0,
+        0,
+        targetWidth,
+        targetHeight
+      );
+
+      busy = true;
+
+      frameCanvas.toBlob(
+        async (blob) => {
+          if (!blob || stopped || !ws || ws.readyState !== WebSocket.OPEN) {
+            busy = false;
+            return;
+          }
+
+          const meta = {
+            lat: position.lat,
+            lon: position.lon,
+            acc: position.acc,
+            speed: position.speed,
+            heading: position.heading,
+            t_capture: Date.now()
+          };
+
+          try {
+            ws.send(JSON.stringify(meta));
+            ws.send(await blob.arrayBuffer());
+          } catch (error) {
+            busy = false;
+            setMessage(`Frame send error: ${error.message}`);
+          }
+        },
+        "image/jpeg",
+        0.6
+      );
+    }
+
+    function startCaptureLoop() {
+      if (captureTimer) clearInterval(captureTimer);
+
+      captureTimer = setInterval(() => {
+        sendNextFrame();
+      }, 500);
+    }
+
+    function stopCaptureLoop() {
+      if (captureTimer) {
+        clearInterval(captureTimer);
+        captureTimer = null;
+      }
+    }
+
+    function closeSocket() {
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
+        ws = null;
+      }
+
+      busy = false;
+      setConnection("offline");
+    }
+
+    function stopEverything() {
+      stopped = true;
+      stopCaptureLoop();
+
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+      }
+
+      closeSocket();
+
+      if (stream) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        stream = null;
+      }
+
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+
+      video.srcObject = null;
+      clearOverlay();
+
+      startButton.disabled = false;
+      stopButton.disabled = true;
+      setMessage("Stopped.");
+      busStatusEl.textContent = "—";
+    }
+
+    async function startEverything() {
+      if (!busInput.value.trim()) {
+        setMessage("Enter a bus ID.");
+        return;
+      }
+
+      if (!keyInput.value.trim()) {
+        setMessage("Enter the bus key.");
+        return;
+      }
+
+      localStorage.setItem("transitnexus_bus_id", busInput.value.trim());
+      localStorage.setItem("transitnexus_bus_key", keyInput.value);
+
+      stopped = false;
+      startButton.disabled = true;
+      stopButton.disabled = false;
+      busStatusEl.textContent = busInput.value.trim();
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 }
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        await video.play();
+        resizeOverlay();
+
+        startGps();
+        await requestWakeLock();
+
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        const bus = encodeURIComponent(busInput.value.trim());
+
+        ws = new WebSocket(
+          `${protocol}//${location.host}/ws/stream?bus_id=${bus}&key=${encodeURIComponent(keyInput.value)}`
+        );
+
+        ws.binaryType = "arraybuffer";
+
+        ws.onopen = () => {
+          setConnection("connected");
+          setMessage("Streaming ready.");
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+
+            if (payload.error) {
+              setMessage(payload.error);
+            }
+
+            drawBoxes(payload.boxes || []);
+
+            framesReceived += 1;
+            updateFps();
+          } catch (error) {
+            setMessage(`Server response error: ${error.message}`);
+          } finally {
+            busy = false;
+          }
+        };
+
+        ws.onerror = () => {
+          setConnection("error");
+          setMessage("WebSocket error.");
+          busy = false;
+        };
+
+        ws.onclose = () => {
+          setConnection("closed");
+          busy = false;
+
+          if (!stopped) {
+            setMessage("Streaming connection closed.");
+          }
+        };
+
+        startCaptureLoop();
+      } catch (error) {
+        stopEverything();
+        setMessage(`Start failed: ${error.message}`);
+      }
+    }
+
+    startButton.addEventListener("click", startEverything);
+    stopButton.addEventListener("click", stopEverything);
+
+    video.addEventListener("loadedmetadata", resizeOverlay);
+    window.addEventListener("resize", resizeOverlay);
+    document.addEventListener("visibilitychange", reconnectWakeLock);
+
+    window.addEventListener("beforeunload", stopEverything);
+  </script>
+</body>
+</html>

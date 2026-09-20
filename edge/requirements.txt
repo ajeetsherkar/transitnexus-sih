@@ -2,3 +2,6 @@ ultralytics
 opencv-python-headless
 onnxruntime
 requests
+
+fastapi
+uvicorn
