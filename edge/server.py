@@ -1,27 +1,57 @@
 from __future__ import annotations
 
+import base64
 import json
+import logging
 import os
+import time
+import uuid
+
 from datetime import datetime, timezone
+
 from pathlib import Path
+
 from typing import Any
 
 import cv2
+
 import numpy as np
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
 from fastapi.concurrency import run_in_threadpool
+
 from fastapi.responses import FileResponse, JSONResponse
+
 from sqlalchemy import select
 
 from backend.auth import hash_api_key
-from backend.db import engine
-from backend.models import Bus
-from edge.detector import Detector
-from edge.events import EventEngine
 
+from backend.db import engine
+
+from backend.models import Bus
+
+from edge.detector import Detector
+
+from edge.events import EventEngine, blur_person_heads
+
+from edge.outbox import Outbox
+
+from edge.uplink import UplinkWorker
+
+
+LOGGER = logging.getLogger("transitnexus.edge")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 CLIENT_FILE = BASE_DIR / "edge" / "static" / "client.html"
+
+BACKEND_URL = os.getenv(
+    "TRANSITNEXUS_BACKEND_URL",
+    "https://transitnexus-v3.onrender.com",
+)
+
+MAX_EVIDENCE_BYTES = 100_000
 
 app = FastAPI(
     title="TransitNexus Edge Streaming Server",
@@ -30,25 +60,33 @@ app = FastAPI(
 )
 
 
-def authenticate_bus(bus_id: str, api_key: str) -> bool:
-    """Validate a phone's bus ID and API key against the existing Bus table."""
+def get_authenticated_bus(
+    bus_id: str,
+    api_key: str,
+) -> Bus | None:
+    """Return the local bus record when the supplied credentials are valid."""
     if not bus_id or not api_key:
-        return False
+        return None
 
     from sqlalchemy.orm import Session
 
     with Session(engine) as db:
-        bus = db.execute(
+        return db.execute(
             select(Bus).where(
                 Bus.bus_id == bus_id,
                 Bus.api_key_hash == hash_api_key(api_key),
             )
         ).scalar_one_or_none()
 
-        return bus is not None
+
+def authenticate_bus(bus_id: str, api_key: str) -> bool:
+    """Validate a phone's bus ID and API key against the existing Bus table."""
+    return get_authenticated_bus(bus_id, api_key) is not None
 
 
-def to_boxes(detections: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def to_boxes(
+    detections: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
     """Flatten detector output into the phone overlay format."""
     boxes: list[dict[str, Any]] = []
 
@@ -57,7 +95,10 @@ def to_boxes(detections: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]
             boxes.append(
                 {
                     "label": detection["label"],
-                    "confidence": round(float(detection["confidence"]), 4),
+                    "confidence": round(
+                        float(detection["confidence"]),
+                        4,
+                    ),
                     "bbox": [
                         round(float(value), 2)
                         for value in detection["bbox"]
@@ -69,20 +110,176 @@ def to_boxes(detections: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]
     return boxes
 
 
+def encode_evidence(
+    frame: np.ndarray,
+    person_detections: list[dict[str, Any]],
+) -> bytes:
+    """Blur person heads and encode a compact JPEG evidence image."""
+    evidence = frame.copy()
+
+    blur_person_heads(
+        evidence,
+        person_detections,
+    )
+
+    height, width = evidence.shape[:2]
+
+    target_width = 480
+
+    if width > target_width:
+        target_height = max(
+            1,
+            round(height * target_width / width),
+        )
+        evidence = cv2.resize(
+            evidence,
+            (target_width, target_height),
+            interpolation=cv2.INTER_AREA,
+        )
+
+    quality = 60
+
+    while quality >= 25:
+        success, encoded = cv2.imencode(
+            ".jpg",
+            evidence,
+            [
+                cv2.IMWRITE_JPEG_QUALITY,
+                quality,
+            ],
+        )
+
+        if not success:
+            raise RuntimeError("Failed to encode evidence JPEG")
+
+        data = encoded.tobytes()
+
+        if len(data) <= MAX_EVIDENCE_BYTES:
+            return data
+
+        quality -= 5
+
+    # A very busy image can still exceed 100 KB at quality 25.
+    # Resize once more before giving up.
+    height, width = evidence.shape[:2]
+
+    reduced_width = max(240, width // 2)
+
+    if width > reduced_width:
+        reduced_height = max(
+            1,
+            round(height * reduced_width / width),
+        )
+        evidence = cv2.resize(
+            evidence,
+            (reduced_width, reduced_height),
+            interpolation=cv2.INTER_AREA,
+        )
+
+    success, encoded = cv2.imencode(
+        ".jpg",
+        evidence,
+        [
+            cv2.IMWRITE_JPEG_QUALITY,
+            20,
+        ],
+    )
+
+    if not success:
+        raise RuntimeError("Failed to encode reduced evidence JPEG")
+
+    data = encoded.tobytes()
+
+    if len(data) > MAX_EVIDENCE_BYTES:
+        raise RuntimeError("Evidence JPEG exceeds 100 KB limit")
+
+    return data
+
+
+def event_timestamp(event: dict[str, Any]) -> str:
+    timestamp_s = float(event.get("timestamp_s", 0.0))
+
+    if timestamp_s > 0:
+        return datetime.fromtimestamp(
+            timestamp_s,
+            tz=timezone.utc,
+        ).isoformat().replace("+00:00", "Z")
+
+    return datetime.now(timezone.utc).isoformat().replace(
+        "+00:00",
+        "Z",
+    )
+
+
+def build_uplink_event(
+    event: dict[str, Any],
+    *,
+    bus: Bus,
+    metadata: dict[str, Any],
+    evidence: bytes,
+) -> dict[str, Any]:
+    """Convert an edge EventEngine event into the backend EventIn schema."""
+    speed_mps = metadata.get("speed")
+
+    try:
+        speed_kmh = float(speed_mps) * 3.6
+    except (TypeError, ValueError):
+        speed_kmh = 0.0
+
+    heading = metadata.get("heading")
+
+    try:
+        heading = float(heading) if heading is not None else 0.0
+    except (TypeError, ValueError):
+        heading = 0.0
+
+    accuracy = metadata.get("acc")
+
+    try:
+        accuracy_m = float(accuracy)
+    except (TypeError, ValueError):
+        accuracy_m = 999.0
+
+    lat = metadata.get("lat")
+    lon = metadata.get("lon")
+
+    if lat is None or lon is None:
+        raise ValueError("Event cannot be uploaded without GPS coordinates")
+
+    evidence_b64 = base64.b64encode(evidence).decode("ascii")
+
+    return {
+        "event_id": str(uuid.uuid4()),
+        "bus_id": bus.bus_id,
+        "camera_id": bus.camera_id,
+        "route_id": bus.route_id,
+        "type": event["event_type"],
+        "confidence": float(event["confidence"]),
+        "severity": event.get("severity", "medium"),
+        "lat": float(lat),
+        "lon": float(lon),
+        "accuracy_m": accuracy_m,
+        "speed_kmh": speed_kmh,
+        "heading": heading,
+        "ts": event_timestamp(event),
+        "source": "live",
+        "evidence_b64": evidence_b64,
+    }
+
+
 def process_frame(
     detector: Detector,
     event_engine: EventEngine,
     frame: np.ndarray,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
-    """
-    Run one frame through the per-phone detector and event engine.
-
-    Event persistence/upload is intentionally deferred to A4.
-    """
+    """Run one frame through detection, events and edge uplink preparation."""
     detections = detector.detect(frame)
 
-    timestamp_s = float(metadata.get("t_capture", 0)) / 1000.0
+    timestamp_s = float(
+        metadata.get("t_capture", 0)
+    ) / 1000.0
+
     speed_kmh = metadata.get("speed")
 
     if speed_kmh is None:
@@ -108,8 +305,6 @@ def process_frame(
         speed_kmh,
     )
 
-    # A4 will persist/upload these events. For A3 we only expose
-    # the count/type as part of the WebSocket response.
     events = []
 
     for event in pothole_events:
@@ -137,11 +332,15 @@ def process_frame(
     return {
         "boxes": to_boxes(detections),
         "events": events,
+        "raw_events": pothole_events + pedestrian_events,
+        "person_detections": detections["objects"],
         "gps": {
             "lat": metadata.get("lat"),
             "lon": metadata.get("lon"),
             "accuracy_m": metadata.get("acc"),
         },
+        "speed_kmh": speed_kmh,
+        "heading": metadata.get("heading"),
     }
 
 
@@ -175,7 +374,12 @@ async def client() -> FileResponse:
 
 @app.get("/health")
 async def health() -> JSONResponse:
-    return JSONResponse({"status": "ok", "service": "edge-streaming"})
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "edge-streaming",
+        }
+    )
 
 
 @app.websocket("/ws/stream")
@@ -183,25 +387,56 @@ async def stream(websocket: WebSocket) -> None:
     """
     Per-phone WebSocket stream.
 
-    Each connection gets its own Detector and EventEngine, preserving
-    independent ByteTrack and event state.
+    Each connection gets its own Detector, EventEngine and UplinkWorker,
+    preserving independent inference/tracking/uplink state.
     """
     bus_id = websocket.query_params.get("bus_id", "")
     api_key = websocket.query_params.get("key", "")
 
     await websocket.accept()
 
-    if not authenticate_bus(bus_id, api_key):
-        await websocket.close(code=1008, reason="Invalid bus credentials")
+    bus = get_authenticated_bus(
+        bus_id,
+        api_key,
+    )
+
+    if bus is None:
+        await websocket.close(
+            code=1008,
+            reason="Invalid bus credentials",
+        )
         return
 
     detector = Detector()
     event_engine = EventEngine()
+
+    outbox_path = Path(
+        os.getenv(
+            "TRANSITNEXUS_OUTBOX_DB",
+            str(BASE_DIR / "edge" / "outbox.db"),
+        )
+    )
+
+    outbox = Outbox(outbox_path)
+
+    uplink = UplinkWorker(
+        bus_id=bus.bus_id,
+        api_key=api_key,
+        backend_url=BACKEND_URL,
+        outbox=outbox,
+    )
+
+    uplink.start()
+
     metadata: dict[str, Any] | None = None
+
+    frame_count = 0
+    fps_started = time.monotonic()
 
     try:
         while True:
             message = await websocket.receive()
+
 
             if message.get("type") == "websocket.disconnect":
                 break
@@ -232,12 +467,23 @@ async def stream(websocket: WebSocket) -> None:
 
             if metadata is None:
                 await websocket.send_json(
-                    {"error": "Frame metadata must arrive before JPEG bytes"}
+                    {
+                        "error": (
+                            "Frame metadata must arrive before JPEG bytes"
+                        )
+                    }
                 )
                 continue
 
-            frame_array = np.frombuffer(binary, dtype=np.uint8)
-            frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+            frame_array = np.frombuffer(
+                binary,
+                dtype=np.uint8,
+            )
+
+            frame = cv2.imdecode(
+                frame_array,
+                cv2.IMREAD_COLOR,
+            )
 
             if frame is None:
                 await websocket.send_json(
@@ -254,12 +500,78 @@ async def stream(websocket: WebSocket) -> None:
                 metadata,
             )
 
+            frame_count += 1
+            elapsed = time.monotonic() - fps_started
+
+            if elapsed >= 1.0:
+                ai_fps = frame_count / elapsed
+                frame_count = 0
+                fps_started = time.monotonic()
+            else:
+                ai_fps = 0.0
+
+            lat = result["gps"]["lat"]
+            lon = result["gps"]["lon"]
+            accuracy = result["gps"]["accuracy_m"]
+
+            gps_ready = (
+                lat is not None
+                and lon is not None
+                and accuracy is not None
+            )
+
+            if gps_ready:
+                for event in result["raw_events"]:
+                    try:
+                        evidence = encode_evidence(
+                            event["frame"],
+                            result["person_detections"],
+                        )
+
+                        payload = build_uplink_event(
+                            event,
+                            bus=bus,
+                            metadata=metadata,
+                            evidence=evidence,
+                        )
+
+                        uplink.enqueue_event(
+                            payload["event_id"],
+                            payload,
+                        )
+
+                    except Exception as exc:
+                        LOGGER.exception(
+                            "failed to queue event bus=%s error=%s",
+                            bus.bus_id,
+                            type(exc).__name__,
+                        )
+
+                try:
+                    uplink.update_heartbeat(
+                        lat=float(lat),
+                        lon=float(lon),
+                        accuracy_m=float(accuracy),
+                        speed_kmh=float(result["speed_kmh"]),
+                        heading=float(result["heading"] or 0.0),
+                        ts=datetime.now(
+                            timezone.utc
+                        ).isoformat().replace("+00:00", "Z"),
+                        camera=True,
+                        gps=True,
+                        ai_fps=ai_fps,
+                    )
+                except (TypeError, ValueError):
+                    pass
+
             await websocket.send_json(
                 {
                     "boxes": result["boxes"],
                     "events": result["events"],
                     "gps": result["gps"],
-                    "server_ts": datetime.now(timezone.utc).isoformat(),
+                    "server_ts": datetime.now(
+                        timezone.utc
+                    ).isoformat(),
                 }
             )
 
@@ -267,7 +579,10 @@ async def stream(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         pass
+
     finally:
+        uplink.stop()
+
         # Drop references to the per-phone detector/event state.
         detector = None  # type: ignore[assignment]
         event_engine = None  # type: ignore[assignment]
