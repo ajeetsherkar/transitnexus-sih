@@ -158,6 +158,10 @@
       <div class="label">Bus</div>
       <div class="value" id="busStatus">—</div>
     </div>
+    <div class="card">
+      <div class="label">Edge processing</div>
+      <div class="value" id="edgeProcessing">—</div>
+    </div>
   </section>
 
   <main id="viewport">
@@ -201,6 +205,7 @@
     let captureTimer = null;
     let stopped = true;
     let framesReceived = 0;
+    const edgeProcessingSamples = [];
     let fpsWindowStart = performance.now();
 
     function setMessage(text) {
@@ -526,6 +531,28 @@
             }
 
             drawBoxes(payload.boxes || []);
+
+            if (Number.isFinite(payload.edge_processing_ms)) {
+              edgeProcessingSamples.push(payload.edge_processing_ms);
+
+              if (edgeProcessingSamples.length > 20) {
+                edgeProcessingSamples.shift();
+              }
+
+              const sorted = [...edgeProcessingSamples].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              const median = sorted.length % 2
+                ? sorted[mid]
+                : (sorted[mid - 1] + sorted[mid]) / 2;
+
+              const edgeProcessingEl =
+                document.getElementById("edgeProcessing");
+
+              if (edgeProcessingEl) {
+                edgeProcessingEl.textContent =
+                  `${payload.edge_processing_ms.toFixed(1)} ms | median ${median.toFixed(1)} ms`;
+              }
+            }
 
             framesReceived += 1;
             updateFps();

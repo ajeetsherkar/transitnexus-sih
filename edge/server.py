@@ -588,6 +588,7 @@ async def stream(websocket: WebSocket) -> None:
                         bus.bus_id,
                     )
 
+            processing_started = time.perf_counter()
             result = await run_in_threadpool(
                 process_frame,
                 detector,
@@ -595,6 +596,9 @@ async def stream(websocket: WebSocket) -> None:
                 frame,
                 metadata,
             )
+            edge_processing_ms = (
+                time.perf_counter() - processing_started
+            ) * 1000.0
 
             frame_count += 1
             elapsed = time.monotonic() - fps_started
@@ -665,6 +669,10 @@ async def stream(websocket: WebSocket) -> None:
                     "boxes": result["boxes"],
                     "events": result["events"],
                     "gps": result["gps"],
+                    "edge_processing_ms": round(
+                        edge_processing_ms,
+                        2,
+                    ),
                     "server_ts": datetime.now(
                         timezone.utc
                     ).isoformat(),

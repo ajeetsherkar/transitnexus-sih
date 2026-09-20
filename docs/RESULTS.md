@@ -32,3 +32,32 @@ The replay demonstrates that multiple reports of the same supported incident can
 - Existing API regression tests: **8/8 passed**
 - Combined backend tests: **15/15 passed**
 - Round-2 replay measurement: **PASS**
+
+## A7 — Edge Processing Measurement
+
+### Live Edge Measurement
+
+**Date:** 2026-09-20
+
+**Test:** Live browser camera → Edge WebSocket inference using `TN-BUS-001`
+
+| Metric | Result |
+|---|---:|
+| Capture / response rate | ~2.0 FPS |
+| Edge processing current sample | 74.7 ms |
+| Edge processing rolling median | **76.9 ms/frame** |
+| Inference image width | 640 px capture / 480 px YOLO inference |
+
+The edge processing measurement covers the `process_frame()` execution path on the Edge server. It does **not** represent full phone-to-dashboard latency because network transport, backend ingestion, event creation, and dashboard polling are outside this measurement.
+
+### A7 Status
+
+- Live Edge connection: **PASS**
+- GPS active: **PASS**
+- AI detections returned to phone: **PASS**
+- Edge processing measurement: **PASS**
+- Median edge processing time: **76.9 ms/frame**
+- Full phone-to-dashboard latency measurement: **PENDING**
+- Physical A5 field-test reality-check set: **PENDING**
+
+No confidence threshold, hit-count threshold, model weights, or image-size inference setting was changed during this measurement. Evidence-based tuning remains pending the physical field-test reality-check set.
