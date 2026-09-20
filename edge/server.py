@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import base64
+import csv
 import json
 import logging
 import os
@@ -52,6 +54,89 @@ BACKEND_URL = os.getenv(
 )
 
 MAX_EVIDENCE_BYTES = 100_000
+FIELD_RECORD_DIR = BASE_DIR / "data" / "field1"
+RECORD_FIELD_TEST = False
+
+
+class FieldRecorder:
+    """Record raw edge frames and GPS metadata for A5 field testing."""
+
+    def __init__(self, output_dir: Path) -> None:
+        self.output_dir = output_dir
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.video_path = self.output_dir / "video.mp4"
+        self.gps_path = self.output_dir / "gps.csv"
+        self.video_writer: cv2.VideoWriter | None = None
+        self.gps_file = self.gps_path.open(
+            "w",
+            newline="",
+            encoding="utf-8",
+        )
+        self.gps_writer = csv.writer(self.gps_file)
+        self.gps_writer.writerow(
+            [
+                "t_capture",
+                "timestamp_utc",
+                "lat",
+                "lon",
+                "accuracy_m",
+                "speed_mps",
+                "heading_deg",
+            ]
+        )
+        self.gps_file.flush()
+
+    def write(
+        self,
+        frame: np.ndarray,
+        metadata: dict[str, Any],
+    ) -> None:
+        if self.video_writer is None:
+            height, width = frame.shape[:2]
+            self.video_writer = cv2.VideoWriter(
+                str(self.video_path),
+                cv2.VideoWriter_fourcc(*"mp4v"),
+                15.0,
+                (width, height),
+            )
+            if not self.video_writer.isOpened():
+                raise RuntimeError(
+                    f"Failed to open field video: {self.video_path}"
+                )
+
+        self.video_writer.write(frame)
+
+        t_capture = metadata.get("t_capture")
+        try:
+            t_capture_ms = int(t_capture)
+            timestamp_utc = datetime.fromtimestamp(
+                t_capture_ms / 1000.0,
+                tz=timezone.utc,
+            ).isoformat().replace("+00:00", "Z")
+        except (TypeError, ValueError, OSError):
+            t_capture_ms = ""
+            timestamp_utc = ""
+
+        self.gps_writer.writerow(
+            [
+                t_capture_ms,
+                timestamp_utc,
+                metadata.get("lat", ""),
+                metadata.get("lon", ""),
+                metadata.get("acc", ""),
+                metadata.get("speed", ""),
+                metadata.get("heading", ""),
+            ]
+        )
+        self.gps_file.flush()
+
+    def close(self) -> None:
+        if self.video_writer is not None:
+            self.video_writer.release()
+            self.video_writer = None
+        if not self.gps_file.closed:
+            self.gps_file.flush()
+            self.gps_file.close()
 
 app = FastAPI(
     title="TransitNexus Edge Streaming Server",
@@ -428,6 +513,8 @@ async def stream(websocket: WebSocket) -> None:
 
     uplink.start()
 
+    recorder = FieldRecorder(FIELD_RECORD_DIR) if RECORD_FIELD_TEST else None
+
     metadata: dict[str, Any] | None = None
 
     frame_count = 0
@@ -491,6 +578,15 @@ async def stream(websocket: WebSocket) -> None:
                 )
                 metadata = None
                 continue
+
+            if recorder is not None:
+                try:
+                    recorder.write(frame, metadata)
+                except Exception:
+                    LOGGER.exception(
+                        "field recording write failed bus=%s",
+                        bus.bus_id,
+                    )
 
             result = await run_in_threadpool(
                 process_frame,
@@ -581,8 +677,49 @@ async def stream(websocket: WebSocket) -> None:
         pass
 
     finally:
+        if recorder is not None:
+            recorder.close()
         uplink.stop()
 
         # Drop references to the per-phone detector/event state.
         detector = None  # type: ignore[assignment]
         event_engine = None  # type: ignore[assignment]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="TransitNexus edge streaming server"
+    )
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="Record field-test video and GPS to data/field1/",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Server host",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Server port",
+    )
+    args = parser.parse_args()
+
+    global RECORD_FIELD_TEST
+    RECORD_FIELD_TEST = args.record
+
+    import uvicorn
+
+    uvicorn.run(
+        "edge.server:app",
+        host=args.host,
+        port=args.port,
+        reload=False,
+    )
+
+
+if __name__ == "__main__":
+    main()
