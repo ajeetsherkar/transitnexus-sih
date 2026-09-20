@@ -18,6 +18,25 @@ const kpiOffline = document.getElementById("kpi-offline");
 const kpiOpenIncidents = document.getElementById("kpi-open-incidents");
 const kpiReportsToday = document.getElementById("kpi-reports-today");
 
+const filterType = document.getElementById("filter-type");
+const filterStatus = document.getElementById("filter-status");
+const filterWindow = document.getElementById("filter-window");
+
+const incidentDrawer = document.getElementById("incident-drawer");
+const drawerClose = document.getElementById("drawer-close");
+const drawerTitle = document.getElementById("drawer-title");
+const drawerError = document.getElementById("drawer-error");
+const drawerStatus = document.getElementById("drawer-status");
+const drawerConfidence = document.getElementById("drawer-confidence");
+const drawerReports = document.getElementById("drawer-reports");
+const drawerBuses = document.getElementById("drawer-buses");
+const drawerFirstSeen = document.getElementById("drawer-first-seen");
+const drawerVerified = document.getElementById("drawer-verified");
+const drawerLastSeen = document.getElementById("drawer-last-seen");
+const drawerContributors = document.getElementById("drawer-contributors");
+const drawerEvidence = document.getElementById("drawer-evidence");
+const drawerResolve = document.getElementById("drawer-resolve");
+
 const busMarkers = new Map();
 const incidentMarkers = new Map();
 
@@ -25,6 +44,36 @@ let map = null;
 let pollTimer = null;
 let refreshBusy = false;
 let toastTimer = null;
+let selectedIncidentId = null;
+let selectedIncident = null;
+let evidenceObjectUrl = null;
+
+function buildIncidentQuery() {
+    const params = new URLSearchParams();
+
+    if (filterType.value) {
+        params.set("type", filterType.value);
+    }
+
+    if (filterStatus.value) {
+        params.set("status", filterStatus.value);
+    }
+
+    if (filterWindow.value === "hour") {
+        params.set("since", new Date(Date.now() - 60 * 60 * 1000).toISOString());
+    } else if (filterWindow.value === "today") {
+        const now = new Date();
+        const startOfDay = new Date(Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate()
+        ));
+        params.set("since", startOfDay.toISOString());
+    }
+
+    const query = params.toString();
+    return query ? `/v1/incidents?${query}` : "/v1/incidents";
+}
 
 function getToken() {
     return sessionStorage.getItem(TOKEN_KEY);
@@ -352,6 +401,7 @@ function syncMarkers(buses, incidents) {
                 keyboard: false,
             }).addTo(map);
 
+            marker.on("click", () => openIncidentDrawer(id));
             incidentMarkers.set(id, marker);
         } else {
             marker.setLatLng([lat, lon]);
@@ -381,6 +431,185 @@ function renderKPIs(stats, buses) {
     kpiOffline.textContent = offline;
     kpiOpenIncidents.textContent = stats.open_incidents ?? 0;
     kpiReportsToday.textContent = stats.reports_today ?? 0;
+}
+
+function setDrawerText(element, value) {
+    element.textContent = value == null || value === "" ? "—" : String(value);
+}
+
+function formatTimestamp(timestamp) {
+    if (!timestamp) {
+        return "—";
+    }
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? String(timestamp) : date.toLocaleString();
+}
+
+function verifiedTimestamp(incident) {
+    // The backend currently records VERIFIED status but has no verified_at field.
+    // Do not infer a verification timestamp from report timestamps.
+    return null;
+}
+
+async function openIncidentDrawer(incidentId) {
+    const token = getToken();
+    if (!token) {
+        showAccess("Enter the dashboard access code.");
+        return;
+    }
+
+    selectedIncidentId = String(incidentId);
+    drawerError.hidden = true;
+    drawerError.textContent = "";
+    drawerResolve.disabled = true;
+    drawerEvidence.removeAttribute("src");
+    drawerEvidence.alt = "Loading incident evidence";
+
+    if (evidenceObjectUrl) {
+        URL.revokeObjectURL(evidenceObjectUrl);
+        evidenceObjectUrl = null;
+    }
+
+    incidentDrawer.classList.add("open");
+    incidentDrawer.setAttribute("aria-hidden", "false");
+
+    setDrawerText(drawerTitle, "Loading…");
+    setDrawerText(drawerStatus, "Loading…");
+    setDrawerText(drawerConfidence, "Loading…");
+    setDrawerText(drawerReports, "Loading…");
+    setDrawerText(drawerBuses, "Loading…");
+    setDrawerText(drawerFirstSeen, "Loading…");
+    setDrawerText(drawerVerified, "Loading…");
+    setDrawerText(drawerLastSeen, "Loading…");
+    drawerContributors.replaceChildren();
+
+    try {
+        const incident = await getJSON(`/v1/incidents/${encodeURIComponent(selectedIncidentId)}`);
+        selectedIncident = incident;
+
+        setDrawerText(drawerTitle, formatType(incident.type));
+        setDrawerText(drawerStatus, normalizeStatus(incident.status));
+
+        const confidence = Number(incident.confidence);
+        setDrawerText(
+            drawerConfidence,
+            Number.isFinite(confidence) ? `${(confidence * 100).toFixed(0)}%` : "—"
+        );
+
+        setDrawerText(drawerReports, incident.report_count);
+        setDrawerText(drawerBuses, incident.bus_count);
+        setDrawerText(drawerFirstSeen, formatTimestamp(incident.first_seen));
+        setDrawerText(drawerVerified, formatTimestamp(verifiedTimestamp(incident)));
+        setDrawerText(drawerLastSeen, formatTimestamp(incident.last_seen));
+
+        const reports = Array.isArray(incident.reports) ? incident.reports : [];
+        const seenBuses = new Set();
+
+        for (const report of reports) {
+            if (report.bus_id) {
+                seenBuses.add(String(report.bus_id));
+            }
+
+            const row = document.createElement("tr");
+
+            const busCell = document.createElement("td");
+            busCell.textContent = report.bus_id || "—";
+
+            const confidenceCell = document.createElement("td");
+            const reportConfidence = Number(report.confidence);
+            confidenceCell.textContent = Number.isFinite(reportConfidence)
+                ? `${(reportConfidence * 100).toFixed(0)}%`
+                : "—";
+
+            const timeCell = document.createElement("td");
+            timeCell.textContent = formatTimestamp(report.ts);
+
+            row.append(busCell, confidenceCell, timeCell);
+            drawerContributors.appendChild(row);
+        }
+
+        if (!reports.length) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 3;
+            cell.textContent = "No contributing reports.";
+            row.appendChild(cell);
+            drawerContributors.appendChild(row);
+        }
+
+        if (seenBuses.size > 0) {
+            setDrawerText(drawerBuses, seenBuses.size);
+        }
+
+        drawerResolve.disabled = normalizeStatus(incident.status) === "RESOLVED";
+
+        const evidenceReport = reports.find(
+            (report) => report.has_evidence && report.event_id
+        );
+
+        if (evidenceReport) {
+            showEvidence(evidenceReport.event_id, drawerEvidence).catch(() => {
+                drawerEvidence.alt = "No evidence available";
+            });
+        } else {
+            drawerEvidence.alt = "No evidence available";
+        }
+    } catch (error) {
+        if (error && error.status === 401) {
+            return;
+        }
+
+        drawerError.textContent = "Unable to load incident details.";
+        drawerError.hidden = false;
+        drawerResolve.disabled = true;
+    }
+}
+
+async function showEvidence(eventId, imgEl) {
+    const token = getToken();
+
+    if (!token || !eventId) {
+        imgEl.removeAttribute("src");
+        imgEl.alt = "No evidence available";
+        return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+        const response = await fetch(
+            `${API}/v1/evidence/${encodeURIComponent(eventId)}.jpg`,
+            {
+                headers: {
+                    "X-Read-Token": token,
+                },
+                signal: controller.signal,
+            }
+        );
+
+        if (response.status === 401) {
+            clearToken();
+            showAccess("Access code expired or invalid.");
+            throw new Error("Unauthorized");
+        }
+
+        if (!response.ok) {
+            imgEl.removeAttribute("src");
+            imgEl.alt = "No evidence available";
+            return;
+        }
+
+        if (evidenceObjectUrl) {
+            URL.revokeObjectURL(evidenceObjectUrl);
+        }
+
+        evidenceObjectUrl = URL.createObjectURL(await response.blob());
+        imgEl.src = evidenceObjectUrl;
+        imgEl.alt = "Incident evidence";
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 function renderAlerts(incidents) {
@@ -451,6 +680,121 @@ function renderAlerts(incidents) {
     }
 }
 
+function handleAlertActivation(event) {
+    const item = event.target.closest(".alert-item");
+    if (!item || !alertsList.contains(item)) {
+        return;
+    }
+
+    const incidentId = item.dataset.incidentId;
+    if (incidentId) {
+        openIncidentDrawer(incidentId);
+    }
+}
+
+async function resolveSelectedIncident() {
+    if (!selectedIncidentId) {
+        return;
+    }
+
+    if (!confirm("Resolve this incident?")) {
+        return;
+    }
+
+    const adminToken = window.prompt("Enter admin code:");
+    if (!adminToken) {
+        return;
+    }
+
+    drawerResolve.disabled = true;
+    drawerError.hidden = true;
+    drawerError.textContent = "";
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+        const response = await fetch(
+            `${API}/v1/incidents/${encodeURIComponent(selectedIncidentId)}/resolve`,
+            {
+                method: "POST",
+                headers: {
+                    "X-Admin-Token": adminToken,
+                },
+                signal: controller.signal,
+            }
+        );
+
+        if (response.status === 401) {
+            drawerError.textContent = "Invalid admin code.";
+            drawerError.hidden = false;
+            drawerResolve.disabled = false;
+            return;
+        }
+
+        if (!response.ok) {
+            drawerError.textContent = "Unable to resolve this incident.";
+            drawerError.hidden = false;
+            drawerResolve.disabled = false;
+            return;
+        }
+
+        const result = await response.json();
+
+        if (selectedIncident) {
+            selectedIncident.status = result.status || "RESOLVED";
+        }
+
+        const marker = incidentMarkers.get(String(selectedIncidentId));
+        if (marker && selectedIncident) {
+            marker.setIcon(incidentIcon(selectedIncident));
+            marker.setPopupContent(incidentPopup(selectedIncident));
+        }
+
+        drawerStatus.textContent = normalizeStatus(result.status || "RESOLVED");
+        drawerResolve.disabled = true;
+
+        showToast("Incident resolved.");
+        await refresh();
+    } catch (error) {
+        if (error && error.name === "AbortError") {
+            drawerError.textContent = "Resolve request timed out.";
+        } else {
+            drawerError.textContent = "Unable to resolve this incident.";
+        }
+        drawerError.hidden = false;
+        drawerResolve.disabled = false;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function closeIncidentDrawer() {
+    incidentDrawer.classList.remove("open");
+    incidentDrawer.setAttribute("aria-hidden", "true");
+    selectedIncidentId = null;
+    selectedIncident = null;
+
+    if (evidenceObjectUrl) {
+        URL.revokeObjectURL(evidenceObjectUrl);
+        evidenceObjectUrl = null;
+    }
+
+    drawerEvidence.removeAttribute("src");
+    drawerEvidence.alt = "Incident evidence";
+}
+
+drawerClose.addEventListener("click", closeIncidentDrawer);
+drawerResolve.addEventListener("click", resolveSelectedIncident);
+
+alertsList.addEventListener("click", handleAlertActivation);
+alertsList.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        handleAlertActivation(event);
+    }
+});
+
 function initMap() {
     map = L.map("map", {
         zoomControl: true,
@@ -485,7 +829,7 @@ async function refresh() {
         const [stats, buses, incidents] = await Promise.all([
             getJSON("/v1/stats"),
             getJSON("/v1/buses"),
-            getJSON("/v1/incidents"),
+            getJSON(buildIncidentQuery()),
         ]);
 
         renderKPIs(stats, buses);

@@ -58,6 +58,37 @@
             </article>
         </section>
 
+
+                <div class="incident-filters" aria-label="Incident filters">
+                    <label>
+                        <span>Event type</span>
+                        <select id="filter-type">
+                            <option value="">All types</option>
+                            <option value="pothole">Pothole</option>
+                            <option value="pedestrian_risk">Pedestrian risk</option>
+                            <option value="incident">Incident</option>
+                            <option value="traffic_density">Traffic density</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Status</span>
+                        <select id="filter-status">
+                            <option value="">All statuses</option>
+                            <option value="DETECTED">Detected</option>
+                            <option value="VERIFIED">Verified</option>
+                            <option value="RESOLVED">Resolved</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Time</span>
+                        <select id="filter-window">
+                            <option value="">All time</option>
+                            <option value="hour">Last hour</option>
+                            <option value="today">Today</option>
+                        </select>
+                    </label>
+                </div>
+
         <section class="workspace">
             <div class="map-card">
                 <div id="map"></div>
@@ -85,6 +116,85 @@
             </aside>
         </section>
     </main>
+
+
+    <aside id="incident-drawer" class="incident-drawer" aria-hidden="true">
+        <div class="drawer-header">
+            <div>
+                <span class="drawer-kicker">Incident detail</span>
+                <h2 id="drawer-title">Incident</h2>
+            </div>
+            <button id="drawer-close" class="drawer-close" type="button" aria-label="Close incident detail">×</button>
+        </div>
+
+        <div class="drawer-body">
+            <div id="drawer-error" class="drawer-error" hidden></div>
+
+            <section class="drawer-summary">
+                <div>
+                    <span class="drawer-label">Status</span>
+                    <strong id="drawer-status">—</strong>
+                </div>
+                <div>
+                    <span class="drawer-label">Fused confidence</span>
+                    <strong id="drawer-confidence">—</strong>
+                </div>
+                <div>
+                    <span class="drawer-label">Reports</span>
+                    <strong id="drawer-reports">—</strong>
+                </div>
+                <div>
+                    <span class="drawer-label">Buses</span>
+                    <strong id="drawer-buses">—</strong>
+                </div>
+            </section>
+
+            <section>
+                <h3>Timeline</h3>
+                <dl class="timeline">
+                    <div>
+                        <dt>First seen</dt>
+                        <dd id="drawer-first-seen">—</dd>
+                    </div>
+                    <div>
+                        <dt>Verified</dt>
+                        <dd id="drawer-verified">—</dd>
+                    </div>
+                    <div>
+                        <dt>Last confirmed</dt>
+                        <dd id="drawer-last-seen">—</dd>
+                    </div>
+                </dl>
+            </section>
+
+            <section>
+                <h3>Contributing buses</h3>
+                <div class="table-wrap">
+                    <table class="contributor-table">
+                        <thead>
+                            <tr>
+                                <th>Bus</th>
+                                <th>Confidence</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drawer-contributors"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section>
+                <h3>Evidence</h3>
+                <div class="evidence-frame">
+                    <img id="drawer-evidence" alt="Incident evidence">
+                </div>
+            </section>
+
+            <button id="drawer-resolve" class="resolve-button" type="button">
+                Resolve incident
+            </button>
+        </div>
+    </aside>
 
     <div id="toast" class="toast" hidden></div>
 
