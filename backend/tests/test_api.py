@@ -470,3 +470,56 @@ def test_incident_filters_are_applied_server_side(client, bus, db_session):
         and item["lon"] == 74.4954
         for item in data
     )
+
+
+def test_bus_trail_minutes_filter(client, bus, db_session):
+    from backend.models import Position
+
+    now = datetime.now(timezone.utc)
+
+    db_session.add_all(
+        [
+            Position(
+                bus_id=bus.bus_id,
+                lat=19.9000,
+                lon=74.4900,
+                accuracy_m=8.0,
+                speed_kmh=20.0,
+                heading=80.0,
+                ts=now - timedelta(minutes=10),
+            ),
+            Position(
+                bus_id=bus.bus_id,
+                lat=19.9010,
+                lon=74.4910,
+                accuracy_m=7.0,
+                speed_kmh=21.0,
+                heading=82.0,
+                ts=now - timedelta(minutes=3),
+            ),
+            Position(
+                bus_id=bus.bus_id,
+                lat=19.9020,
+                lon=74.4920,
+                accuracy_m=6.0,
+                speed_kmh=22.0,
+                heading=84.0,
+                ts=now - timedelta(minutes=1),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/v1/buses/TEST-BUS-001/trail?minutes=5",
+        headers={"X-Read-Token": TEST_READ_TOKEN},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    returned_lats = [item["lat"] for item in data]
+
+    assert 19.9000 not in returned_lats
+    assert 19.9010 in returned_lats
+    assert 19.9020 in returned_lats

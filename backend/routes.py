@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
@@ -392,6 +392,8 @@ def get_stats(
 def get_bus_trail(
     bus_id: str,
     since: Optional[datetime] = Query(default=None),
+
+    minutes: int = Query(default=30, ge=1, le=120),
     _: None = Depends(require_read_token),
     db: Session = Depends(get_db),
 ):
@@ -404,8 +406,7 @@ def get_bus_trail(
 
     if since is None:
         since = now.replace(microsecond=0)
-        from datetime import timedelta
-        since = since - timedelta(minutes=30)
+        since = since - timedelta(minutes=minutes)
 
     if since.tzinfo is None:
         since = since.replace(tzinfo=timezone.utc)

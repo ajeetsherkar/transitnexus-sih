@@ -92,6 +92,41 @@
         <section class="workspace">
             <div class="map-card">
                 <div id="map"></div>
+
+                <section id="bus-status-card" class="bus-status-card" hidden aria-live="polite">
+                    <div class="bus-status-header">
+                        <div>
+                            <span class="bus-status-kicker">Selected bus</span>
+                            <strong id="bus-status-title">—</strong>
+                        </div>
+                        <button id="bus-status-close" class="bus-status-close" type="button" aria-label="Close bus status">×</button>
+                    </div>
+
+                    <div class="bus-status-state">
+                        <span id="bus-status-badge" class="bus-status-badge">—</span>
+                        <span id="bus-status-last-seen">—</span>
+                    </div>
+
+                    <div class="bus-status-grid">
+                        <div>
+                            <span>Speed</span>
+                            <strong id="bus-status-speed">—</strong>
+                        </div>
+                        <div>
+                            <span>Heading</span>
+                            <strong id="bus-status-heading">—</strong>
+                        </div>
+                        <div>
+                            <span>GPS accuracy</span>
+                            <strong id="bus-status-accuracy">—</strong>
+                        </div>
+                        <div>
+                            <span>Camera</span>
+                            <strong id="bus-status-camera">—</strong>
+                        </div>
+                    </div>
+                </section>
+
                 <div class="map-legend">
                     <span><i class="legend-bus online"></i> Online bus</span>
                     <span><i class="legend-bus offline"></i> Offline bus</span>

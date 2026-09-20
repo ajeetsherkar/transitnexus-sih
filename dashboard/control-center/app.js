@@ -18,6 +18,16 @@ const kpiOffline = document.getElementById("kpi-offline");
 const kpiOpenIncidents = document.getElementById("kpi-open-incidents");
 const kpiReportsToday = document.getElementById("kpi-reports-today");
 
+const busStatusCard = document.getElementById("bus-status-card");
+const busStatusClose = document.getElementById("bus-status-close");
+const busStatusTitle = document.getElementById("bus-status-title");
+const busStatusBadge = document.getElementById("bus-status-badge");
+const busStatusLastSeen = document.getElementById("bus-status-last-seen");
+const busStatusSpeed = document.getElementById("bus-status-speed");
+const busStatusHeading = document.getElementById("bus-status-heading");
+const busStatusAccuracy = document.getElementById("bus-status-accuracy");
+const busStatusCamera = document.getElementById("bus-status-camera");
+
 const filterType = document.getElementById("filter-type");
 const filterStatus = document.getElementById("filter-status");
 const filterWindow = document.getElementById("filter-window");
@@ -39,8 +49,12 @@ const drawerResolve = document.getElementById("drawer-resolve");
 
 const busMarkers = new Map();
 const incidentMarkers = new Map();
+const busTrails = new Map();
 
 let map = null;
+let selectedBusId = null;
+let selectedBus = null;
+let selectedBusResponseAt = 0;
 let pollTimer = null;
 let refreshBusy = false;
 let toastTimer = null;
@@ -278,6 +292,136 @@ function busIcon(bus) {
     });
 }
 
+function busStatusState(bus) {
+    const position = bus.latest_position || {};
+    const serverAge = Number(bus.age_s);
+    const responseAge = selectedBusResponseAt
+        ? Math.max(0, (Date.now() - selectedBusResponseAt) / 1000)
+        : 0;
+    const age = Number.isFinite(serverAge)
+        ? serverAge + responseAge
+        : Infinity;
+
+    if (age < 15) {
+        return { label: "ONLINE", className: "" };
+    }
+
+    if (age < 60) {
+        return { label: "STALE", className: "stale" };
+    }
+
+    return { label: "OFFLINE", className: "offline" };
+}
+
+function renderBusStatus(bus) {
+    if (!bus || !busStatusCard) {
+        return;
+    }
+
+    const position = bus.latest_position || {};
+    const state = busStatusState(bus);
+
+    selectedBus = bus;
+
+    busStatusCard.hidden = false;
+    busStatusTitle.textContent = bus.bus_id || "—";
+    busStatusBadge.textContent = state.label;
+    busStatusBadge.className = `bus-status-badge ${state.className}`.trim();
+
+    busStatusLastSeen.textContent = position.ts
+        ? `Last seen ${timeAgo(position.ts)}`
+        : "No recent GPS position";
+
+    const speed = Number(position.speed_kmh);
+    const heading = Number(position.heading);
+    const accuracy = Number(position.accuracy_m);
+
+    busStatusSpeed.textContent = Number.isFinite(speed)
+        ? `${speed.toFixed(1)} km/h`
+        : "—";
+
+    busStatusHeading.textContent = Number.isFinite(heading)
+        ? `${heading.toFixed(0)}°`
+        : "—";
+
+    busStatusAccuracy.textContent = Number.isFinite(accuracy)
+        ? `${accuracy.toFixed(1)} m`
+        : "—";
+
+    busStatusCamera.textContent = bus.camera_id || "—";
+}
+
+function hideBusStatus() {
+    selectedBusId = null;
+    selectedBus = null;
+    busStatusCard.hidden = true;
+
+    for (const [id, trail] of busTrails) {
+        map.removeLayer(trail);
+        busTrails.delete(id);
+    }
+}
+
+async function loadBusTrail(busId) {
+    if (!map || !busId) {
+        return;
+    }
+
+    const points = await getJSON(
+        `/v1/buses/${encodeURIComponent(busId)}/trail?minutes=30`
+    );
+
+    const latLngs = (Array.isArray(points) ? points : [])
+        .map((point) => [Number(point.lat), Number(point.lon)])
+        .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon))
+        .slice(-300);
+
+    let trail = busTrails.get(busId);
+
+    if (!trail) {
+        trail = L.polyline(latLngs, {
+            weight: 4,
+            opacity: 0.65,
+            lineCap: "round",
+            lineJoin: "round",
+        }).addTo(map);
+        busTrails.set(busId, trail);
+    } else {
+        trail.setLatLngs(latLngs);
+    }
+
+    for (const [id, existingTrail] of busTrails) {
+        if (id !== busId) {
+            map.removeLayer(existingTrail);
+            busTrails.delete(id);
+        }
+    }
+}
+
+function selectBus(bus) {
+    if (!bus || !bus.bus_id) {
+        return;
+    }
+
+    selectedBusId = String(bus.bus_id);
+    selectedBusResponseAt = Date.now();
+    renderBusStatus(bus);
+
+    const marker = busMarkers.get(selectedBusId);
+    if (marker) {
+        map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 15), {
+            duration: 0.5,
+        });
+    }
+
+    loadBusTrail(selectedBusId).catch((error) => {
+        if (error && error.status === 401) {
+            return;
+        }
+        showToast("Unable to load bus trail.");
+    });
+}
+
 function busPopup(bus) {
     const position = bus.latest_position;
 
@@ -360,6 +504,7 @@ function syncMarkers(buses, incidents) {
                 keyboard: false,
             }).addTo(map);
 
+            marker.on("click", () => selectBus(bus));
             busMarkers.set(id, marker);
         } else {
             marker.setLatLng([lat, lon]);
@@ -785,6 +930,7 @@ function closeIncidentDrawer() {
 }
 
 drawerClose.addEventListener("click", closeIncidentDrawer);
+busStatusClose.addEventListener("click", hideBusStatus);
 drawerResolve.addEventListener("click", resolveSelectedIncident);
 
 alertsList.addEventListener("click", handleAlertActivation);
@@ -834,6 +980,19 @@ async function refresh() {
 
         renderKPIs(stats, buses);
         syncMarkers(buses, incidents);
+
+        if (selectedBusId) {
+            const currentBus = buses.find(
+                (bus) => String(bus.bus_id) === selectedBusId
+            );
+
+            if (currentBus) {
+                selectedBus = currentBus;
+                renderBusStatus(currentBus);
+                await loadBusTrail(selectedBusId);
+            }
+        }
+
         renderAlerts(incidents);
 
         lastUpdated.textContent = new Date().toLocaleTimeString();
@@ -859,6 +1018,9 @@ function startPolling() {
 
     pollTimer = setInterval(() => {
         refresh();
+        if (selectedBus) {
+            renderBusStatus(selectedBus);
+        }
     }, POLL_MS);
 }
 
