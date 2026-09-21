@@ -1,7 +1,7 @@
 const API = "";
 const TOKEN_KEY = "tn_read";
 const POLL_MS = 3000;
-const REQUEST_TIMEOUT_MS = 4000;
+const REQUEST_TIMEOUT_MS = 10000;
 
 const accessOverlay = document.getElementById("access-overlay");
 const accessForm = document.getElementById("access-form");
