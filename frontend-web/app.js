@@ -37,7 +37,7 @@ const API_URL =
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1"
         ? "http://127.0.0.1:8000"
-        : "https://transitnexus-sih.onrender.com";
+        : "https://transitnexus-v3.onrender.com";
 
 const WS_URL = API_URL.replace(/^http/, "ws") + "/ws/alerts";
 
@@ -101,10 +101,20 @@ const fleetOnlineCamerasElement = document.getElementById("fleet-online-cameras"
 const fleetAlertsTodayElement = document.getElementById("fleet-alerts-today");
 const fleetHighCongestionZonesElement = document.getElementById("fleet-high-congestion-zones");
 
+const r3BusesOnlineElement = document.getElementById("r3-buses-online");
+const r3BusesOfflineElement = document.getElementById("r3-buses-offline");
+const r3IncidentsDetectedElement = document.getElementById("r3-incidents-detected");
+const r3IncidentsVerifiedElement = document.getElementById("r3-incidents-verified");
+const r3ReportsTodayElement = document.getElementById("r3-reports-today");
+
 let eventChart = null;
 let heatLayer = null;
 let allEvents = [];
 let eventMarkers = [];
+let fleetMarkers = [];
+let round3IncidentMarkers = [];
+
+let dashboardRefreshTimer = null;
 let selectedEventTypes = new Set();
 
 function getEventColor(eventType) {
@@ -120,6 +130,26 @@ function getEventColor(eventType) {
         default:
             return "blue";
     }
+}
+
+function createFleetMarkerIcon(online) {
+    const color = online ? "green" : "grey";
+
+    return L.divIcon({
+        className: "fleet-marker",
+        html: `
+            <div style="
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: ${color};
+                border: 3px solid white;
+                box-shadow: 0 1px 6px rgba(0,0,0,0.55);
+            "></div>
+        `,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+    });
 }
 
 function createMarkerIcon(color) {
@@ -367,6 +397,94 @@ function updateAnalytics(events) {
     }
 }
 
+function renderFleetMarkers(buses) {
+    fleetMarkers.forEach((marker) => map.removeLayer(marker));
+    fleetMarkers = [];
+
+    buses.forEach((bus) => {
+        const position = bus.latest_position;
+
+        if (
+            !position ||
+            typeof position.lat !== "number" ||
+            typeof position.lon !== "number"
+        ) {
+            return;
+        }
+
+        const marker = L.marker(
+            [position.lat, position.lon],
+            {
+                icon: createFleetMarkerIcon(bus.online)
+            }
+        ).addTo(map);
+
+        const source = String(bus.source || "unknown")
+            .replace("_", " ")
+            .toUpperCase();
+
+        marker.bindPopup(`
+            <div class="event-popup">
+                <strong>🚌 ${bus.bus_id}</strong><br>
+                Route: ${bus.route_id || "N/A"}<br>
+                Speed: ${position.speed_kmh ?? "N/A"} km/h<br>
+                Status: ${bus.online ? "ONLINE" : "OFFLINE"}<br>
+                Source: ${source}<br>
+                Last Seen: ${position.ts || "N/A"}
+            </div>
+        `);
+
+        fleetMarkers.push(marker);
+    });
+
+    console.log(`Rendered ${fleetMarkers.length} fleet markers`);
+}
+
+function renderRound3IncidentMarkers(incidents) {
+    round3IncidentMarkers.forEach((marker) => map.removeLayer(marker));
+    round3IncidentMarkers = [];
+
+    (incidents || []).forEach((incident) => {
+        if (
+            typeof incident.lat !== "number" ||
+            typeof incident.lon !== "number"
+        ) {
+            return;
+        }
+
+        const eventType = incident.type || "incident";
+        const color = getEventColor(eventType);
+
+        const marker = L.marker(
+            [incident.lat, incident.lon],
+            {
+                icon: createMarkerIcon(color)
+            }
+        ).addTo(map);
+
+        marker.bindPopup(`
+            <div class="event-popup">
+                <strong>🚨 ROUND 3 INCIDENT</strong><br>
+                Type: ${eventType}<br>
+                Status: ${incident.status || "N/A"}<br>
+                Severity: ${incident.severity || "N/A"}<br>
+                Confidence: ${incident.confidence ?? "N/A"}<br>
+                Reports: ${incident.report_count ?? 0}<br>
+                Buses: ${incident.bus_count ?? 0}<br>
+                GPS: ${incident.lat}, ${incident.lon}<br>
+                First Seen: ${incident.first_seen || "N/A"}<br>
+                Last Seen: ${incident.last_seen || "N/A"}
+            </div>
+        `);
+
+        round3IncidentMarkers.push(marker);
+    });
+
+    console.log(
+        `Rendered ${round3IncidentMarkers.length} Round 3 incident markers`
+    );
+}
+
 function renderEventMarkers() {
     eventMarkers.forEach((marker) => map.removeLayer(marker));
     eventMarkers = [];
@@ -561,6 +679,38 @@ async function loadPredictions() {
 }
 
 
+async function loadRound3Dashboard() {
+    try {
+        const response = await fetch(`${API_URL}/v1/dashboard`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const dashboard = await response.json();
+
+        const stats = dashboard.stats || {};
+        r3BusesOnlineElement.textContent = stats.buses_online ?? 0;
+        r3BusesOfflineElement.textContent = stats.buses_offline ?? 0;
+        r3IncidentsDetectedElement.textContent = stats.incidents_detected ?? 0;
+        r3IncidentsVerifiedElement.textContent = stats.incidents_verified ?? 0;
+        r3ReportsTodayElement.textContent = stats.reports_today ?? 0;
+
+        renderFleetMarkers(dashboard.buses || []);
+        renderRound3IncidentMarkers(dashboard.incidents || []);
+
+        console.log(
+            `✓ Round 3 dashboard loaded: ${dashboard.buses?.length || 0} buses, ` +
+            `${dashboard.incidents?.length || 0} incidents`
+        );
+
+        return dashboard;
+    } catch (error) {
+        console.error("Failed to load Round 3 dashboard:", error);
+        return null;
+    }
+}
+
 async function loadEvents() {
     try {
         const response = await fetch(`${API_URL}/events`);
@@ -580,24 +730,6 @@ async function loadEvents() {
         createEventFilters(events);
         renderEventMarkers();
         updateAnalytics(events);
-
-        if (events.length > 0) {
-            const validEvents = events.filter(
-                (event) =>
-                    typeof event.lat === "number" &&
-                    typeof event.lon === "number"
-            );
-
-            if (validEvents.length > 0) {
-                const bounds = L.latLngBounds(
-                    validEvents.map((event) => [event.lat, event.lon])
-                );
-
-                map.fitBounds(bounds, {
-                    padding: [30, 30]
-                });
-            }
-        }
 
         statusElement.textContent = "Connected";
         statusElement.classList.add("connected");
@@ -763,11 +895,17 @@ function connectWebSocket() {
 }
 
 async function initializeDashboard() {
+    await loadRound3Dashboard();
     await loadEvents();
     await loadHeatmap();
     await loadPredictions();
     await loadZoneSummary();
     connectWebSocket();
+
+    dashboardRefreshTimer = setInterval(
+        loadRound3Dashboard,
+        3000
+    );
 }
 
 initializeDashboard();

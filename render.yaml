@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: transitnexus-v3
+    runtime: python
+    branch: round3
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: READ_TOKEN
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+
+  - type: web
+    name: transitnexus-dashboard
+    runtime: docker
+    branch: round3
+    dockerfilePath: ./frontend-web/Dockerfile
+    dockerContext: .

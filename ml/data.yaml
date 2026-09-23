@@ -1,0 +1,7 @@
+train: /Users/ajeetsherkar/Downloads/Multi-Weather Pothole Detection (MWPD)/MWPD/train/images
+val: /Users/ajeetsherkar/Downloads/Multi-Weather Pothole Detection (MWPD)/MWPD/valid/images
+test: /Users/ajeetsherkar/Downloads/Multi-Weather Pothole Detection (MWPD)/MWPD/test/images
+
+nc: 1
+names:
+  - Potholes
