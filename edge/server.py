@@ -138,6 +138,7 @@ class FieldRecorder:
             self.gps_file.flush()
             self.gps_file.close()
 
+
 app = FastAPI(
     title="TransitNexus Edge Streaming Server",
     description="Round 3 phone camera streaming and edge inference service.",
@@ -523,7 +524,6 @@ async def stream(websocket: WebSocket) -> None:
     try:
         while True:
             message = await websocket.receive()
-
 
             if message.get("type") == "websocket.disconnect":
                 break

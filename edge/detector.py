@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-import cv2
 from ultralytics import YOLO
 
 

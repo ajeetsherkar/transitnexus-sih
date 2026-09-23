@@ -1,0 +1,4 @@
+[flake8]
+per-file-ignores =
+    tools/create_sim_fleet_keys.py:E402
+    tools/replay_dedup_round2.py:E402

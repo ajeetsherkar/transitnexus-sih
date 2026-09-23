@@ -449,7 +449,8 @@ def test_incident_filters_are_applied_server_side(client, bus, db_session):
     )
 
     response = client.get(
-        "/v1/incidents?since=" + (now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+        "/v1/incidents?since="
+        + (now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
         headers=headers,
     )
 

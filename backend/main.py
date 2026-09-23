@@ -9,6 +9,7 @@ from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, HTTPExceptio
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from backend.routes import router as round3_router
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -375,8 +376,6 @@ async def test_broadcast_incident():
 
 
 # Round 3 API routes
-from backend.routes import router as round3_router
-
 app.include_router(round3_router)
 
 

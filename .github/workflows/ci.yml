@@ -27,7 +27,7 @@ jobs:
 
       - name: Run linter
         run: |
-          flake8 backend scripts --max-line-length=88 --count --statistics
+          flake8 backend dashboard edge ml tools --max-line-length=88 --count --statistics
 
       - name: FastAPI smoke test
         run: |

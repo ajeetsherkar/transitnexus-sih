@@ -1,17 +1,15 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 import json
 import secrets
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy.orm import Session
 
 from backend.auth import hash_api_key
 from backend.db import create_tables, engine
 from backend.models import Bus
-
 
 KEYS_FILE = Path("keys.json")
 BUS_COUNT = 10

@@ -1,6 +1,4 @@
 import hashlib
-import os
-import secrets
 
 import pytest
 from fastapi.testclient import TestClient
