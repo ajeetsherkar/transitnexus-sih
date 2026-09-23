@@ -2,355 +2,316 @@
 
 **AI-Powered Mobile Urban Intelligence Platform Using Public Transport Fleet**
 
-TransitNexus is a prototype urban-intelligence platform designed to transform public-transport fleet video/data into structured mobility events and actionable insights.
+TransitNexus turns public-transport buses into mobile sensing units. A camera and GPS on each bus generate structured, location-aware mobility events in real time — road hazards, pedestrian risk, and traffic conditions — which are deduplicated across the fleet, verified, and shown live on a GIS control-center dashboard.
 
-The system combines computer vision, event processing, simulated GPS association, congestion analysis, pedestrian-risk detection, incident alerts, ML-based congestion and route-delay prediction, a FastAPI backend, WebSocket real-time alerts, and two dashboard frontends: a new Leaflet/HTML/CSS/JavaScript frontend and the original Streamlit prototype kept as a backup.
+> **Smart India Hackathon 2026 — Round 3 Submission**
+> Problem Statement: **SIH26124** · Theme: **Smart Automation** · Category: **Software**
+> Sponsor: **Bharat Electronics Limited (BEL)** · Team: **TransitNexus** (Team ID 165934)
 
-> **SIH 2026 Prototype — Software Category**
->
-> This prototype uses pretrained models and simulated fleet/GPS data to demonstrate the core intelligence pipeline. Production deployment would integrate live fleet feeds, real GPS telemetry, improved ALPR/OCR, and scalable infrastructure.
+[![CI](https://github.com/ajeetsherkar/transitnexus-sih/actions/workflows/ci.yml/badge.svg)](https://github.com/ajeetsherkar/transitnexus-sih/actions)
 
----
-
-## Problem Statement
-
-Urban public-transport fleets continuously move through city roads and generate valuable visual and mobility data. However, converting this raw fleet data into structured information about traffic conditions, congestion, pedestrian risks, road incidents, and locations is challenging.
-
-TransitNexus demonstrates an AI-powered pipeline that can process fleet video, detect relevant objects/events, associate events with location and time, and present the resulting intelligence through a GIS-based dashboard.
+**Live Control Center:** https://transitnexus-v3.onrender.com/dashboard/
+**Backend API docs:** https://transitnexus-v3.onrender.com/docs
+**Demo video:** _[add link]_
 
 ---
 
-## Solution
+## The Problem
 
-TransitNexus provides an end-to-end prototype pipeline:
+1. Urban authorities cannot continuously monitor road conditions across large, complex road networks in real time.
+2. Public-transport buses already carry cameras and travel extensively across a city every day, but this video is largely unused for real-time road and incident monitoring.
+3. Delayed identification of exact hazard locations slows maintenance, emergency response, and road-safety action.
+
+## Our Solution
+
+TransitNexus converts existing public-transport buses into mobile sensing units, turning camera video into structured, location-aware mobility events in real time.
 
 ```text
-Fleet / Traffic Video
-        ↓
-Computer Vision Detection
-        ↓
-Structured Event Extraction
-        ↓
-GPS + Timestamp Association
-        ↓
-Event Analytics
-   ├── Congestion Analysis
-   ├── Pedestrian Risk Detection
-   └── Incident Detection
-             ↓
-      Plate Extraction / OCR
-             ↓
-      Structured Event Data
-             ↓
-        FastAPI Backend
-        ├── REST APIs
-        ├── RF Congestion Model
-        ├── GBR Route-Delay Model
-        └── WebSocket Alerts
-             ├─────────────┐
-             ↓               ↓
-     Leaflet/JS v2       Streamlit v1
-     Live Frontend       Backup Prototype
+Video → AI Detection → Structured Events → GIS + ML Intelligence → Actionable Dashboard
 ```
 
-The dashboard provides a visual representation of detected events, congestion zones, analytics, and incident alerts.
+| | Prototype (what is built and running) | Production target |
+|---|---|---|
+| Sensing | Live smartphone camera + real-time GPS acting as the bus device | Live bus-mounted camera + vehicle GPS unit |
+| Compute | Edge AI on a laptop edge node | On-bus edge computer (Jetson-class / rugged) |
+| Backend | Deployed FastAPI + Postgres cloud backend | Same backend, scaled fleet |
+| Dashboard | Live GIS control center | Same, with authority-facing workflows |
 
-### Live Deployments
+**Why TransitNexus:**
+- Reuses the existing bus fleet — no new fixed sensing network to install
+- Converts raw detections into structured, verified, actionable events — not just video
+- Deduplicates the same incident reported by multiple buses into a single confirmed record
+- Scales from one phone to a full fleet without redesigning the pipeline
 
-**v2 — Leaflet/HTML/CSS/JavaScript + real-time WebSocket alerts**
+---
 
-https://transitnexus-frontend.onrender.com
+## Live Architecture
 
-The v2 frontend connects to the deployed FastAPI backend using HTTPS REST APIs and a secure WebSocket (`wss://`) channel for live incident alerts.
+```text
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  Phone 1    │  │  Phone 2    │  │  Phone 3    │
+│ TN-BUS-001  │  │ TN-BUS-002  │  │ TN-BUS-003  │
+│ Camera+GPS  │  │ Camera+GPS  │  │ Camera+GPS  │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │
+       └────────────────┼────────────────┘
+                         │  HTTPS / WebSocket
+                         ▼
+              ┌───────────────────────┐
+              │  Cloudflare Tunnel    │   exposes the local
+              │  (*.trycloudflare.com)│   edge server to phones
+              └───────────┬───────────┘
+                          │
+                          ▼
+              ┌───────────────────────┐
+              │   Local Edge Server   │   runs on a laptop today;
+              │                       │   Jetson-class device in
+              │  YOLOv8 detection     │   production
+              │  ByteTrack tracking   │
+              │  Event engine         │
+              │  Evidence generation  │
+              │  SQLite offline outbox│
+              └───────────┬───────────┘
+                          │  HTTPS REST (events, heartbeat)
+                          ▼
+              ┌───────────────────────┐
+              │  TransitNexus Backend │   deployed on Render
+              │  (FastAPI)            │
+              │  Per-bus API-key auth │
+              │  Dedup engine         │
+              │  Incident lifecycle   │
+              └───────────┬───────────┘
+                          │
+                          ▼
+                  ┌───────────────┐
+                  │   PostgreSQL  │
+                  └───────┬───────┘
+                          │
+                          ▼
+              ┌───────────────────────┐
+              │   Control Center      │   Leaflet dashboard,
+              │   (/dashboard/)       │   served by the backend
+              │  Fleet + trails       │
+              │  Incidents + evidence │
+              │  Filters + zones      │
+              └───────────────────────┘
+```
 
-**v1 — Streamlit prototype / backup**
+**Where each piece runs:**
 
-The original Streamlit dashboard remains available as a fallback while the new v2 frontend is used as the primary presentation interface.
+| Component | Location | Purpose |
+|---|---|---|
+| Mobile client | Phone (browser) | Camera + GPS sensing, no app install needed |
+| Cloudflare Tunnel | Internet | Exposes the local edge server to phones over HTTPS (required for camera/GPS permissions) |
+| Edge server | Local laptop today | ML inference, tracking, event generation, offline outbox |
+| FastAPI backend | Render (cloud) | Authentication, ingestion, deduplication, incident lifecycle, API |
+| Database | Render-hosted Postgres | Persistent buses, positions, reports, incidents |
+| Control Center | Render, served at `/dashboard/` | Fleet map, live alerts, filters, incident detail, evidence |
 
-> The Streamlit version is intentionally retained as a backup to preserve the working prototype while the newer frontend stack is evaluated.
+Only structured events, heartbeats, and a small evidence image leave the edge node — raw video is never uploaded. This keeps the design practical as the fleet grows.
+
+---
+
+## Technical Approach
+
+| Layer | What it does | Technologies |
+|---|---|---|
+| 1. Mobile Sensing | Phone camera + GPS act as the bus device | Camera, GPS, Bus ID, WebSocket |
+| 2. Edge AI | Detects and tracks road hazards, vehicles, and pedestrians | YOLOv8, OpenCV, ByteTrack, Event Engine |
+| 3. Connectivity | Gets phone data to the edge node and events to the cloud reliably | Cloudflare Tunnel, SQLite Outbox, Retry/Backoff |
+| 4. Cloud Intelligence | Authenticates, validates, and deduplicates incoming reports | FastAPI, Ingestion API, Dedup Engine, Incident Verification |
+| 5. GIS Control Center | Presents fleet and incidents to an operator | Leaflet, Fleet Monitoring, Incident Detail, Evidence |
+
+**Core technologies:** Python · Ultralytics (YOLOv8) · FastAPI · WebSocket · SQLite · PostgreSQL · Leaflet
+
+Each layer runs independently — a single bus camera can generate structured events today, while the same pipeline scales to a full fleet without redesign.
 
 ---
 
 ## Key Features
 
-### 1. Vehicle & Pedestrian Detection
+### 1. Live Phone-Based Sensing
+A phone's rear camera and GPS act as a bus's camera and GPS unit — no dedicated hardware needed to validate the pipeline. Frames stream to the edge server over a secure WebSocket; GPS updates (lat, lon, accuracy, speed, heading) stream alongside them.
 
-* YOLOv8-based object detection.
-* Detects vehicles and people from traffic/fleet video.
-* Stores detection confidence and evidence frames.
+### 2. Edge Detection and Tracking
+YOLOv8 detects road hazards, vehicles, and pedestrians on each frame. ByteTrack assigns a stable track ID to each object across frames, so one pothole or one pedestrian is counted once, not once per frame.
 
-### 2. Structured Urban Events
+### 3. Structured Event Generation
+Confirmed detections (not raw per-frame boxes) become events, each with an event type, confidence, GPS location, timestamp, bus/camera ID, and a small evidence image.
 
-Each processed event can contain:
+### 4. Multi-Bus Deduplication
+The core Round-3 capability: when multiple buses report the same real-world incident, TransitNexus merges them into a single incident record instead of creating duplicate alerts.
 
-* Event type
-* Detection confidence
-* Latitude
-* Longitude
-* Timestamp
-* Evidence frame path
+- **Type-aware matching** — different rules for a static hazard (pothole) vs. a transient one (pedestrian risk)
+- **Spatial matching** — a distance radius that widens with the reporting phone's GPS accuracy, since phone GPS is typically off by 5–20 m
+- **Temporal matching** — reports must fall within a type-specific time window
+- **Same-bus guard** — a bus re-reporting the same spot doesn't inflate the confirming-bus count
+- **Confidence fusion** — merged confidence is computed across all contributing buses' best detections
 
-This converts raw computer-vision output into structured mobility data.
+**Validated results:**
 
-### 3. GPS Association
+| Test | Reports submitted | Result |
+|---|---|---|
+| Simulated fleet, single pothole | 14 reports from 10 simulated buses | Collapsed to **1 incident**, `bus_count: 10`, status `VERIFIED` |
+| Real-device field test, single pothole | 44 reports from 3 physical phones | Collapsed to **1 incident**, `bus_count: 3`, status `VERIFIED` |
 
-The current prototype simulates GPS movement along the:
+### 5. Incident Lifecycle
+Incidents move through `DETECTED` (1 bus) → `VERIFIED` (2+ distinct buses) → `RESOLVED` (operator action). A new detection at a resolved location opens a new incident linked as a **recurrence** — useful for flagging a repair that didn't hold.
 
-**Kopargaon MSRTC Bus Stand → Kopargaon Railway Station**
+### 6. Reliable Uplink (Offline Queue)
+Events are written to a local SQLite outbox before being sent. If the network drops, the uplink thread retries with exponential backoff; events are idempotent on `event_id`, so retries never create duplicates. A dead-letter table catches requests that can never succeed (e.g. bad auth) so they don't block the queue.
 
-route.
+### 7. Per-Bus Authentication
+Every bus/phone authenticates with its own API key (stored server-side only as a hash). A key that doesn't match its claimed `bus_id` is rejected. Read endpoints require a separate read token so the live data isn't publicly scrapeable.
 
-GPS coordinates are interpolated along predefined route points and associated with video timestamps.
+### 8. GIS Control Center Dashboard
+- Live fleet map: bus markers (online/offline), bus trails, follow-bus mode
+- Live incident markers, colour-coded by status, with type icons
+- KPI strip: buses online/offline, open incidents, reports today
+- Filters by bus, route, event type, severity, status, time window
+- Incident detail panel: status timeline, contributing buses, fused confidence, evidence image
+- Access-code overlay so the live dashboard isn't open to anyone with the link
 
-> Production version: integrate real-time GPS telemetry from public-transport vehicles.
-
-### 4. Congestion Analysis
-
-Vehicle detections are aggregated into 5-second windows.
-
-The prototype calculates a **vehicle detection-density score** to identify potentially congested periods.
-
-This is a detection-density metric for the prototype and should not be interpreted as a direct measurement of physical traffic density.
-
-### 5. Pedestrian Risk Detection
-
-A predefined high-risk roadside zone is used to identify detected persons entering the zone.
-
-This demonstrates how fleet video can be used to flag potential pedestrian-risk locations.
-
-### 6. Incident Detection
-
-The prototype includes an incident workflow that:
-
-* Selects vehicle evidence frames.
-* Associates the event with timestamp and GPS.
-* Extracts/associates a plate value.
-* Stores supporting frames.
-* Displays the incident in the dashboard's **Live Alerts** panel.
-
-### 7. Plate Extraction / OCR
-
-The prototype attempts OCR-based plate extraction using **EasyOCR**.
-
-For the current demonstration, OCR output was too noisy to reliably identify a real license plate. Therefore, the demonstrated incident uses:
-
-```text
-plate: MH15-TRN-01
-plate_source: mock_ocr
-plate_confidence: 0.85
-```
-
-**OCR accuracy to be improved in Phase 2.**
-
-Planned improvements include:
-
-* Better license-plate region localization
-* Image preprocessing
-* Multi-frame OCR aggregation
-* Improved OCR/ALPR models
-* Production-grade validation
-
-### 8. GIS Dashboards
-
-TransitNexus currently provides two frontend implementations.
-
-**v2 — Leaflet/HTML/CSS/JavaScript frontend**
-
-* Interactive Leaflet route map
-* Event markers and filters
-* Congestion heat map
-* Event analytics
-* Busiest-zone summary
-* Congestion summary
-* AI congestion-severity prediction
-* AI route-delay prediction
-* Real-time incident alerts over WebSockets
-* Plate extraction information
-* Evidence-frame references
-
-**v1 — Streamlit/Folium prototype**
-
-* Interactive route map
-* Event markers
-* Congestion heat map
-* Event analytics
-* Incident information
-* Plate/evidence information
-
-The Streamlit version remains live as a backup prototype.
+### 9. Multi-Bus Fleet Simulator
+`tools/simulate_fleet.py` drives simulated buses along real drawn routes with realistic GPS noise, for testing and demoing fleet-scale behaviour (including the same-pothole dedup scenario) without needing physical devices every time.
 
 ---
 
-## System Architecture
+## Honest Performance Numbers
 
-```mermaid
-flowchart TD
-    A[Traffic / Fleet Video] --> B[YOLOv8 Detection]
-    A --> C[Pothole YOLO Detection]
+Measured during outdoor field testing with physical phones over a live Cloudflare tunnel, not a lab benchmark:
 
-    B --> D[Structured Event Extraction]
-    C --> D
+| Metric | Result |
+|---|---|
+| Edge inference latency | ~67–76 ms per frame |
+| Achieved field frame rate | ~0.2–0.9 fps per phone |
+| Pothole model precision | 78.2% |
+| Pothole model mAP@50 | 74.3% |
+| Dedup validation (simulated) | 10 buses → 1 incident |
+| Dedup validation (real devices) | 3 phones, 44 reports → 1 incident |
 
-    D --> E[GPS + Timestamp Association]
-
-    E --> F[Congestion Analysis]
-    E --> G[Pedestrian Risk Detection]
-    E --> H[Incident Detection]
-
-    H --> I[Plate Extraction / OCR]
-
-    F --> J[Structured Events]
-    G --> J
-    H --> J
-    I --> J
-
-    J --> K[events.json]
-
-    K --> L[FastAPI Backend]
-
-    L --> M[REST APIs]
-    L --> N[RF Congestion Classifier]
-    L --> O[GBR Route-Delay Regressor]
-    L --> P[WebSocket /ws/alerts]
-
-    M --> Q[Leaflet / HTML / CSS / JS v2]
-    P --> Q
-
-    M --> R[Streamlit / Folium v1 Backup]
-
-    S[YOLOv8 PyTorch Weights] --> T[ONNX Export]
-    T --> U[ONNX Runtime Benchmark]
-
-    V[Docker Compose] --> L
-    V --> Q
-    V --> R
-
-    W[GitHub Actions CI] --> L
-    W --> Q
-```
+**We report this frame rate honestly rather than calling it real-time.** At ~0.2–0.9 fps, the system is near-real-time on current hardware (a laptop edge node over a phone's mobile connection), not continuous high-frame-rate video analytics. The architecture is designed for this to improve significantly on dedicated edge hardware (Jetson-class) rather than a laptop, which is the direct production path — the API, dedup engine, and dashboard do not change when the edge node changes.
 
 ---
 
-## AI / ML Pipeline
+## Real vs Simulated vs Production
 
-### Vehicle Detection
+| Component | Current state | Evidence | Production plan |
+|---|---|---|---|
+| Phone camera stream + edge processing | **Real, live** | Field-test recordings, live dashboard | Same pipeline, bus-mounted camera |
+| Pothole detection | **Real**, limited accuracy | Model card: 78.2% precision, 74.3% mAP@50 | Retrain on larger, road-specific dataset |
+| Person / vehicle detection | **Real** (pretrained YOLOv8 COCO classes) | Annotated detection video | Same |
+| Object tracking (ByteTrack) | **Real** | Stable track IDs in annotated video | Same |
+| Live GPS | **Real** (phone GPS, ~5–20 m accuracy) | Live bus trails on dashboard | Vehicle-grade GPS unit |
+| Multi-bus fleet | **Real** (2–3 physical phones) + simulated buses for scale testing | Dashboard fleet badges | Full physical fleet |
+| Deduplication | **Real algorithm**, tested with simulated and real devices | Validation table above | Same algorithm at fleet scale |
+| Offline queue | **Real**, tested with a live network cut | Field-test log | Same |
+| Backend + database | **Real**, deployed (Render + Postgres) | Live API at `/docs` | Same, scaled infrastructure |
+| Congestion / route-delay ML (Round 2 legacy) | Prototype models trained on engineered/simulated features | `models/` in repo | Retrain on real fleet + traffic ground truth, or drop |
+| Plate OCR / hit-and-run | **Simulated** (Round 2 prototype only) | Labelled `mock_ocr` in event data | Production-grade ALPR |
+| ONNX export | **Real**, benchmarked on a laptop CPU | Benchmark table in `docs/` | Evaluate on target edge hardware |
+| Jetson / rugged edge hardware | **Roadmap** — not tested | — | Primary production hardware target |
+| PostGIS, Kafka/Redis, RBAC | **Roadmap** | — | Needed at full fleet scale |
 
-The prototype uses a pretrained **YOLOv8** model for general object detection.
-
-```text
-Input Video
-     ↓
-Frame Extraction
-     ↓
-YOLOv8 Inference
-     ↓
-Object Detection
-     ↓
-Confidence Filtering
-     ↓
-Structured Events
-```
-
-### Pothole Detection
-
-A pretrained pothole YOLO model is used to demonstrate road-damage detection on pothole imagery.
-
-### Event Processing
-
-Detected objects are converted into structured events containing spatial, temporal, confidence, and evidence information.
-
-### Analytics Layer
-
-The event stream is aggregated to generate:
-
-* Vehicle detection-density scores
-* Congestion events
-* Pedestrian-risk events
-* Spatial event concentrations
-* Incident alerts
+> **Judge-ready answer:** *"We validated the full event-to-intelligence pipeline live, using a phone's camera and GPS as the bus device, with real edge inference, real deduplication across real devices, and a deployed cloud backend. Production replaces the phone with a bus-mounted camera and GPS unit on the same architecture — the API, dedup engine, and dashboard do not change."*
 
 ---
 
-## ML Models and Inference
+## Feasibility Snapshot
 
-### Random Forest Congestion Classifier
+- **2,606** events processed across prototype validation (Round 2 baseline) plus live Round 3 field testing
+- **5** core technologies proven end-to-end in a deployed system
+- End-to-end pipeline validated: video → detection → event → dedup → dashboard
 
-A Random Forest classifier predicts congestion severity from engineered event-density and temporal features.
-
-Current production prototype output example:
-
-```text
-Congestion severity: high
-High probability: 0.935
-```
-
-### Gradient Boosting Route-Delay Regressor
-
-A Gradient Boosting Regressor estimates route delay from the prototype's simulated training target.
-
-Current production prototype output example:
-
-```text
-Estimated route delay: 65.41 minutes
-```
-
-> The route-delay value is a prototype estimate based on the simulated training target and is not real traffic-delay ground truth.
-
-### ML Training and Evaluation Evidence
-
-The current prototype uses engineered zone/time-window features generated from the processed event stream.
-
-| Model | Task | Features | Data Source | Train/Test Split | Metric |
-| --- | --- | --- | --- | --- | --- |
-| Random Forest | Congestion severity classification | Density score, event count, event-type ratios, zone latitude/longitude, hour, minute | Engineered features from processed `events.json` | 10 / 4 (75/25, stratified) | Accuracy: 75%; Weighted F1: 0.75 |
-| Gradient Boosting | Route-delay regression | Density score, event count, event-type ratios, zone latitude/longitude, hour, minute | Engineered features from processed `events.json` | 10 / 4 (75/25) | RMSE: 6.7333 minutes |
-
-> **Prototype evaluation note:** The congestion-severity labels are derived from density-score quantiles, while the route-delay target is simulated from observed event density/counts. These metrics demonstrate the implemented ML pipeline on prototype data; they are not claims of real-world traffic prediction accuracy.
-
-### ONNX Export and Benchmark
-
-The YOLO models are exported to ONNX to establish a portable inference representation for future edge deployment.
-
-The benchmark was performed on an Apple M2 CPU using the same 50 decoded video frames for both PyTorch and ONNX Runtime.
-
-| Model | PyTorch Avg (ms/frame) | ONNX Avg (ms/frame) | ONNX Change |
-| --- | --- | --- | --- |
-| Vehicle YOLOv8n | 33.60 | 38.12 | -13.43% |
-| Pothole YOLOv8 | 63.25 | 108.43 | -71.43% |
-
-On the tested Apple M2 CPU environment, ONNX Runtime was slower for both models. Therefore, the prototype does **not** claim a guaranteed ONNX latency improvement.
-
-The ONNX export provides a portable inference representation that can be evaluated and optimized for the eventual edge hardware and execution provider.
-
-See `docs/onnx_benchmark.md` for the complete benchmark methodology and additional statistics.
+| Challenge | Mitigation |
+|---|---|
+| Video quality, lighting, and motion variation | Confidence thresholds + temporal/spatial deduplication |
+| Duplicate events across frames and across buses | ByteTrack (within-camera) + spatio-temporal dedup engine (cross-bus) |
+| Real-world data and ground-truth requirements | Field-test data collection; retraining path documented |
+| Edge compute, connectivity, security, storage | Edge inference, offline outbox, per-bus API keys, event-first (not video) transmission |
 
 ---
 
-## Technology Stack
+## Impact
 
-| Layer | Technology |
-| --- | --- |
-| Programming | Python |
-| Computer Vision | OpenCV |
-| Object Detection | YOLOv8 / Ultralytics |
-| Pothole Detection | YOLO-based pretrained model |
-| OCR | EasyOCR |
-| Machine Learning | Scikit-learn |
-| Congestion Model | Random Forest Classifier |
-| Route Delay Model | Gradient Boosting Regressor |
-| Model Serialization | Joblib |
-| Edge Model Format | ONNX |
-| ONNX Inference | ONNX Runtime |
-| Backend | FastAPI |
-| API Server | Uvicorn |
-| Real-Time Communication | WebSockets |
-| v1 Dashboard | Streamlit / Folium |
-| v2 Dashboard | HTML / CSS / JavaScript / Leaflet.js |
-| Data Processing | Pandas |
-| Containers | Docker |
-| Orchestration | Docker Compose |
-| CI/CD | GitHub Actions |
-| Version Control | Git / GitHub |
+**Authorities** — real-time, location-linked road intelligence and faster incident response, without new fixed sensing infrastructure.
+
+**Commuters** — safer roads through faster hazard detection and repair prioritization.
+
+**Law enforcement** — location-linked, timestamped incident evidence to support investigation.
+
+**Economic** — reuses the existing bus fleet instead of funding a new city-wide sensor network.
+
+---
+
+## API Endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/v1/events` | bus key | Ingest one event; idempotent on `event_id`; runs the dedup engine |
+| POST | `/v1/heartbeat` | bus key | Latest position and device status (camera, GPS, fps, queue depth) |
+| GET | `/v1/buses` | read token | Fleet list with online/offline status and last-seen age |
+| GET | `/v1/buses/{id}/trail` | read token | Recent GPS positions for a bus's live trail |
+| GET | `/v1/incidents` | read token | Incidents, filterable by type, status, bus, zone, time |
+| GET | `/v1/incidents/{id}` | read token | Incident detail: contributing buses, evidence, status timeline |
+| POST | `/v1/incidents/{id}/resolve` | admin token | Mark an incident resolved (a later detection opens a recurrence) |
+| GET | `/v1/evidence/{event_id}.jpg` | read token | Evidence image for an event |
+| GET | `/v1/zones` | read token | Per-zone aggregates |
+| GET | `/v1/stats` | read token | Counters and latency (median / p95) |
+| GET | `/health` | none | Liveness check |
+
+Full interactive documentation: https://transitnexus-v3.onrender.com/docs
+
+---
+
+## Running the Live System
+
+### 1. Backend and dashboard (already deployed — no setup needed to view)
+
+- Control Center: https://transitnexus-v3.onrender.com/dashboard/
+- API docs: https://transitnexus-v3.onrender.com/docs
+
+### 2. Running the edge server locally (to stream from a phone)
+
+```bash
+PYTHONPATH=. TRANSITNEXUS_BACKEND_URL=https://transitnexus-v3.onrender.com \
+  python edge/server.py --host 0.0.0.0 --port 8000
+```
+
+### 3. Expose it to a phone over HTTPS (required for camera/GPS permissions)
+
+```bash
+cloudflared tunnel --protocol http2 --url http://localhost:8000
+```
+
+This prints a temporary URL like `https://<random-name>.trycloudflare.com` — a fresh one is generated every time the tunnel starts.
+
+### 4. Open the mobile client on a phone
+
+```text
+https://<cloudflare-url>.trycloudflare.com/client
+```
+
+Enter the bus ID (e.g. `TN-BUS-001`) and its API key, grant camera and location permissions, and start sensing. Detection boxes render live on the phone; events appear on the Control Center within seconds.
+
+### 5. Multi-device field test
+
+| Device | Bus ID |
+|---|---|
+| Phone 1 | `TN-BUS-001` |
+| Phone 2 | `TN-BUS-002` |
+| Phone 3 | `TN-BUS-003` |
+
+All phones use the same tunnel `/client` URL with different bus IDs and credentials.
+
+> API keys and Cloudflare tunnel URLs are per-session secrets and are intentionally not published in this README.
+
+### 6. Simulating a fleet without physical devices
+
+```bash
+python tools/simulate_fleet.py --buses 10 --scenario same-pothole --url https://transitnexus-v3.onrender.com --keys keys.json
+python tools/check_dedup.py
+```
 
 ---
 
@@ -359,459 +320,94 @@ See `docs/onnx_benchmark.md` for the complete benchmark methodology and addition
 ```text
 transitnexus-sih/
 │
-├── backend/
-│   ├── Dockerfile
-│   └── main.py
+├── backend/                 # FastAPI cloud backend (deployed on Render)
+│   ├── models.py            # SQLAlchemy models: Bus, Position, Report, Incident
+│   ├── db.py
+│   ├── routes.py            # /v1/events, /v1/heartbeat, /v1/incidents, ...
+│   ├── dedup.py             # spatio-temporal deduplication engine
+│   ├── geo.py
+│   ├── auth.py
+│   ├── schemas.py
+│   └── tests/
 │
-├── frontend/
-│   ├── Dockerfile
-│   └── app.py
+├── edge/                    # Local edge node (runs on a laptop today)
+│   ├── server.py            # WebSocket streaming server
+│   ├── detector.py          # YOLOv8 + ByteTrack
+│   ├── events.py            # detection → structured event logic
+│   ├── outbox.py            # offline SQLite queue
+│   ├── uplink.py            # retry / backoff uploader
+│   ├── static/client.html   # phone-facing mobile sensing client
+│   └── weights/              # model weights (not committed to git)
 │
-├── frontend-web/
-│   ├── index.html
-│   ├── style.css
-│   └── app.js
+├── dashboard/
+│   └── control-center/      # Leaflet GIS control center, served at /dashboard/
 │
-├── data/
-│   ├── raw/
-│   │   ├── videos/
-│   │   └── potholes/
-│   │
-│   └── processed/
-│       ├── events.json
-│       └── events/
+├── ml/                       # Pothole model training and evaluation
+│   ├── train_pothole.py
+│   └── evaluate_pothole.py
+│
+├── tools/                    # Fleet simulator, dedup checks, admin scripts
+│   ├── simulate_fleet.py
+│   ├── check_dedup.py
+│   ├── create_bus_key.py
+│   └── import_round2_events.py
 │
 ├── docs/
-│   ├── pipeline.md
-│   └── onnx_benchmark.md
+│   ├── API_CONTRACT.md
+│   ├── MODEL_CARD.md
+│   ├── RESULTS.md
+│   ├── field-test-1.md
+│   └── field-test-2.md
 │
-├── models/
-│   ├── congestion_rf.joblib
-│   ├── route_delay_gbr.joblib
-│   ├── pothole_best.pt
-│   └── pothole_best.onnx
-│
-├── schemas/
-│   └── event_schema.json
-│
-├── scripts/
-│   ├── gps_simulator.py
-│   ├── run_inference.py
-│   └── benchmark_onnx.py
-│
-├── .dockerignore
-├── .gitignore
+├── .github/workflows/ci.yml
 ├── docker-compose.yml
-├── README.md
 ├── requirements.txt
-└── yolov8n.pt
+└── README.md
 ```
 
 ---
 
-## Running with Docker
+## Round 2 → Round 3: What Changed
 
-Docker is the recommended way to run the complete stack.
-
-### Prerequisites
-
-* Docker
-* Docker Compose
-
-### Start the application
-
-```bash
-docker compose up --build
-```
-
-The services will be available at:
-
-```text
-v2 Frontend (Leaflet/JS, primary):
-http://localhost:8081
-
-v1 Frontend (Streamlit, backup):
-http://localhost:8501
-
-Backend:
-http://localhost:8000
-
-API Documentation:
-http://localhost:8000/docs
-```
-
-### Stop the application
-
-```bash
-docker compose down
-```
-
-The Docker Compose configuration connects the frontend and backend using the internal service name:
-
-```text
-http://backend:8000
-```
-
-The `data/` directory is shared with the containers so the backend and frontend can access the processed event data.
-
----
-
-## Running Without Docker
-
-### Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Start the FastAPI backend
-
-```bash
-uvicorn backend.main:app --reload
-```
-
-### Start the Streamlit dashboard
-
-Open another terminal:
-
-```bash
-streamlit run frontend/app.py
-```
-
-Dashboard:
-
-```text
-http://localhost:8501
-```
-
-API documentation:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
----
-
-## API Endpoints
-
-### Root
-
-```text
-GET /
-```
-
-Returns basic API information and available endpoints.
-
-### Events
-
-```text
-GET /events
-```
-
-Returns all structured events.
-
-### Filter Events
-
-```text
-GET /events?type=incident
-```
-
-Examples:
-
-```text
-/events?type=car
-/events?type=congestion
-/events?type=incident
-```
-
-### Congestion Heatmap Data
-
-```text
-GET /heatmap-data
-```
-
-Returns grouped congestion locations for GIS visualization.
-
-### Predictions
-
-```text
-GET /predictions
-```
-
-Returns the current Random Forest congestion-severity classification and Gradient Boosting route-delay estimate.
-
-Example response:
-
-```json
-{
-  "congestion_severity": "high",
-  "congestion_confidence": 0.935,
-  "route_delay_minutes": 65.41
-}
-```
-
-### Real-Time Incident Alerts (WebSocket)
-
-```text
-WS /ws/alerts
-```
-
-Broadcasts each new incident event to connected clients as it is detected, so the v2 frontend can display alerts live without polling. In production this is served over `wss://`.
-
-### Interactive API Documentation
-
-```text
-/docs
-```
-
-FastAPI automatically provides interactive Swagger documentation.
-
----
-
-## Example Event
-
-A typical structured event contains information such as:
-
-```json
-{
-  "event_type": "incident",
-  "confidence": 0.85,
-  "lat": 19.902751,
-  "lon": 74.498161,
-  "timestamp": "1970-01-01T00:00:25.57+00:00",
-  "frame_path": "data/processed/events/incident_frames/incident_frame_767.jpg"
-}
-```
-
-Incident events additionally contain plate-related fields and supporting evidence frames.
-
----
-
-## Dashboard Flow
-
-The dashboard provides a complete visual flow:
-
-```text
-Connect to FastAPI
-        ↓
-Load Urban Events
-        ↓
-Display Route + Event Markers
-        ↓
-Display Analytics
-        ↓
-Display Congestion Heat Map
-        ↓
-Display Live Incident Alerts
-        ↓
-Show Plate / Evidence Information
-```
-
----
-
-## Current Prototype Data
-
-The current demonstration uses:
-
-* Traffic/fleet video samples
-* Pretrained computer-vision models
-* A simulated Kopargaon route
-* Structured JSON event storage
-* Prototype incident evidence
-* Prototype OCR/mock plate extraction
-
-The system is therefore intended as a **demo-grade proof of concept**, not a production fleet-monitoring deployment.
-
----
-
-## Real vs Simulated vs Production
-
-The current system validates the complete event-to-intelligence pipeline using processed video and simulated fleet/location data. The production architecture is designed to connect the same event schema and intelligence pipeline to live bus-mounted camera and GPS feeds.
-
-| Component | Current State | Production Plan |
+| | Round 2 | Round 3 |
 |---|---|---|
-| Video feed | Processed sample traffic/fleet video clips | Live bus-mounted camera feeds |
-| GPS | Simulated route/location data | Real GPS telemetry from buses |
-| OCR / Plate | Mock OCR / plate fallback for prototype validation | Production-grade ALPR/OCR pipeline |
-| Congestion / Delay Models | Prototype-trained models using the available demonstration data | Retrain and validate using real-world traffic and fleet ground-truth data |
-| Event Storage | Structured JSON event storage | Production database / persistent event store |
-### Judge-Ready Answer
-
-> “We validated the full event-to-intelligence pipeline using processed video and simulated fleet/location data. The production version connects the same event schema to real bus-mounted camera and GPS feeds.”
-
----
-
-## Prototype Limitations
-
-The current prototype has several deliberate limitations.
-
-### Simulated GPS
-
-GPS coordinates are simulated along a predefined route.
-
-### Prototype OCR
-
-The current OCR output was not reliable enough to identify a real plate consistently.
-
-**OCR accuracy to be improved in Phase 2.**
-
-### Pretrained Models
-
-The prototype uses pretrained detection models rather than training a complete production model from scratch.
-
-### Offline Processing
-
-The current pipeline demonstrates processing of recorded video rather than a continuous live fleet stream.
-
-### Event Validation
-
-Production deployment would require stronger deterministic validation, event deduplication, temporal tracking, and multi-source verification.
-
----
-
-## Future Production Improvements
-
-The next phase can extend TransitNexus with:
-
-* Real-time fleet GPS integration
-* Live vehicle camera streams
-* Multi-object tracking
-* Production-grade ALPR/OCR
-* Improved road-damage detection
-* Real-time streaming inference
-* Event deduplication
-* Confidence calibration
-* Database-backed event storage
-* Scalable cloud deployment
-* Authentication and access control
-* Historical mobility analytics
-* Predictive congestion modelling
-* City-wide fleet intelligence
-
----
-
-## 🌐 Live Deployment
-
-TransitNexus is deployed as a three-service prototype: a v2 primary frontend, a v1 backup frontend, and a shared FastAPI backend.
-
-- **v2 Frontend — Leaflet/HTML/CSS/JavaScript GIS Dashboard (primary):**
-  https://transitnexus-frontend.onrender.com
-
-- **v1 Frontend — Streamlit GIS Dashboard (backup):**
-  https://transitnexus-sih-bh6zfxwgregqvbmvb7j9tt.streamlit.app/
-
-- **Backend — FastAPI API:**
-  https://transitnexus-sih.onrender.com/
-
-### Live API Endpoints
-
-- `/` — API status and available endpoints
-- `/events` — Complete processed event dataset
-- `/events?type=incident` — Incident events
-- `/heatmap-data` — Congestion heatmap data
-- `/predictions` — RF congestion-severity and GBR route-delay predictions
-- `/ws/alerts` — WebSocket channel for real-time incident alerts (`wss://` in production)
-- `/docs` — Interactive FastAPI Swagger documentation: https://transitnexus-sih.onrender.com/docs
-
-### Deployment Architecture
-
-```text
-                              TransitNexus
-                                   │
-                 ┌─────────────────┴─────────────────┐
-                 │                                   │
-                 ▼                                   ▼
-      Render Static Site                    Streamlit Community
-      v2 Leaflet/JS Frontend                Cloud v1 Backup
-                 │                                   │
-                 │ HTTPS REST + WSS                  │ HTTPS REST
-                 │                                   │
-                 └─────────────────┬─────────────────┘
-                                   │
-                                   ▼
-                         FastAPI Backend
-                         Render Web Service
-                                   │
-                    ┌──────────────┼──────────────┐
-                    │              │              │
-                    ▼              ▼              ▼
-                 REST APIs    RF + GBR Models   WebSocket
-                    │              │          /ws/alerts
-                    └──────────────┼──────────────┘
-                                   │
-                                   ▼
-                         Processed Event Data
-                                   │
-                         ┌─────────┴─────────┐
-                         │                   │
-                         ▼                   ▼
-                    2,606 Events        Incident Events
-```
-
-### Deployment Verification
-
-The deployed prototype was tested end-to-end:
-
-- ✅ v2 Leaflet frontend loads successfully
-- ✅ v2 frontend connects to the deployed FastAPI backend
-- ✅ v1 Streamlit dashboard remains available as a backup
-- ✅ 2,606 processed events available
-- ✅ Congestion heatmap endpoint returns data
-- ✅ GIS route and event markers render successfully
-- ✅ RF congestion prediction is available
-- ✅ GBR route-delay prediction is available
-- ✅ Production WebSocket connection succeeds
-- ✅ Live incident broadcast reaches the connected frontend
-- ✅ FastAPI `/events` endpoint returns event data
-- ✅ FastAPI `/events?type=incident` returns incident data
-- ✅ FastAPI `/heatmap-data` returns congestion data
-
----
-
-## Reproducibility
-
-The project is designed to be reproducible using Docker Compose.
-
-The complete stack can be started with:
-
-```bash
-docker compose up --build
-```
-
-This launches:
-
-```text
-FastAPI Backend
-       ↕
-Docker Network
-       ↕
-Streamlit Frontend
-```
-
----
-
-## Project Status
-
-**Status: SIH 2026 Demo-Grade Prototype**
-
-The current implementation demonstrates an end-to-end urban intelligence pipeline from computer-vision detection to structured events, API serving, GIS visualization, congestion analysis, pedestrian-risk detection, and incident alerts.
-
-Production deployment would require real fleet telemetry, improved OCR/ALPR, stronger event validation, scalable infrastructure, and continuous real-time processing.
+| Video source | Pre-recorded sample clips | Live phone camera stream |
+| GPS | Simulated along a fixed route | Real phone GPS |
+| Object tracking | None (per-frame detection only) | ByteTrack, stable IDs |
+| Duplicate handling | None | Type-aware spatio-temporal dedup engine, validated with real and simulated buses |
+| Storage | `events.json` | PostgreSQL |
+| Auth | None (open endpoints) | Per-bus hashed API keys, read/admin tokens |
+| Network resilience | None | SQLite offline outbox with retry/backoff |
+| Dashboard | Single-bus event map | Multi-bus fleet control center with trails, filters, incident lifecycle |
+| Pothole model | Generic pretrained weights | Fine-tuned TransitNexus pothole model (precision 78.2%, mAP@50 74.3%) |
 
 ---
 
 ## Team
 
-**TransitNexus — SIH 2026**
+Ajeet Sherkar
+Onkar Jha 
+Pradnya Mhaske
+Gajanan Jorvekar
+Sakshi Zinjurde
+Yashraj Gade
 
-Built as a Smart India Hackathon prototype for:
+**TransitNexus — SIH 2026 — SIH26124**
+AI-Powered Mobile Urban Intelligence Platform Using Public Transport Fleet · Software Category
 
-**SIH26124 — AI-Powered Mobile Urban Intelligence Platform Using Public Transport Fleet**
+## Screenshots
 
-Software Category
+_[Add Control Center screenshots here]_
 
----
+## Research and References
+
+1. Bharat Electronics Limited (BEL) — SIH26124 Problem Statement Brief, sih.gov.in
+2. Ultralytics YOLOv8 — Real-time Object Detection, docs.ultralytics.com
+3. RDD2022 — Road Damage Dataset (pothole / road-damage detection)
+4. ONNX Runtime — Edge Inference and Deployment, onnxruntime.ai
+5. Scikit-learn — Machine Learning and Model Evaluation, scikit-learn.org
+6. Live prototype and code: github.com/ajeetsherkar/transitnexus-sih
 
 ## License
 
-This project is developed as an SIH prototype and demonstration system.
+Developed as a Smart India Hackathon 2026 prototype and demonstration system.
