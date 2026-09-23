@@ -15,3 +15,5 @@ onnxruntime
 onnxslim
 
 websockets
+
+SQLAlchemy>=2.0,<3
