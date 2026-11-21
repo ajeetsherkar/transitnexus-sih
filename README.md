@@ -2,7 +2,7 @@
 
 **AI-Powered Mobile Urban Intelligence Platform Using Public Transport Fleet**
 
-TransitNexus turns public-transport buses into mobile sensing units. A camera and GPS on each bus generate structured, location-aware mobility events in real time — road hazards, pedestrian risk, and traffic conditions — which are deduplicated across the fleet, verified, and shown live on a GIS control-center dashboard.
+TransitNexus turns public-transport buses into mobile sensing units. A phone camera and GPS feed an edge-processing pipeline that generates structured, location-aware reports for road hazards and pedestrian risk. Reports are sent to a cloud backend, where the system applies multi-bus deduplication and presents fleet and incident information on a GIS control-center dashboard.
 
 > **Smart India Hackathon 2026 — Round 3 Submission**
 > Problem Statement: **SIH26124** · Theme: **Smart Automation** · Category: **Software**
@@ -24,7 +24,7 @@ TransitNexus turns public-transport buses into mobile sensing units. A camera an
 
 ## Our Solution
 
-TransitNexus converts existing public-transport buses into mobile sensing units, turning camera video into structured, location-aware mobility events in real time.
+TransitNexus uses cameras and GPS on public-transport vehicles to generate structured, location-aware event reports. The current prototype demonstrates this workflow with smartphone-based sensing and a laptop edge node.
 
 ```text
 Video → AI Detection → Structured Events → GIS + ML Intelligence → Actionable Dashboard
@@ -39,8 +39,8 @@ Video → AI Detection → Structured Events → GIS + ML Intelligence → Actio
 
 **Why TransitNexus:**
 - Reuses the existing bus fleet — no new fixed sensing network to install
-- Converts raw detections into structured, verified, actionable events — not just video
-- Deduplicates the same incident reported by multiple buses into a single confirmed record
+- Converts detections into structured, location-aware event reports rather than relying on raw video alone
+- Merges reports that satisfy the system's type-aware, spatial, and temporal matching rules into a shared incident record
 - Scales from one phone to a full fleet without redesigning the pipeline
 
 ---
@@ -108,7 +108,7 @@ Video → AI Detection → Structured Events → GIS + ML Intelligence → Actio
 | Database | Render-hosted Postgres | Persistent buses, positions, reports, incidents |
 | Control Center | Render, served at `/dashboard/` | Fleet map, live alerts, filters, incident detail, evidence |
 
-Only structured events, heartbeats, and a small evidence image leave the edge node — raw video is never uploaded. This keeps the design practical as the fleet grows.
+The phone streams camera frames to the local edge server for processing. Raw video is not sent to the cloud backend. The edge-to-cloud uplink sends structured event reports, heartbeats, and selected evidence images. This distinction is important: video is transmitted from the phone to the edge node, while the cloud receives event-oriented data.
 
 ---
 
@@ -148,7 +148,7 @@ The core Round-3 capability: when multiple buses report the same real-world inci
 - **Same-bus guard** — a bus re-reporting the same spot doesn't inflate the confirming-bus count
 - **Confidence fusion** — merged confidence is computed across all contributing buses' best detections
 
-**Validated results:**
+**Recorded deduplication test results:**
 
 | Test | Reports submitted | Result |
 |---|---|---|
@@ -156,7 +156,7 @@ The core Round-3 capability: when multiple buses report the same real-world inci
 | Real-device field test, single pothole | 44 reports from 3 physical phones | Collapsed to **1 incident**, `bus_count: 3`, status `VERIFIED` |
 
 ### 5. Incident Lifecycle
-Incidents move through `DETECTED` (1 bus) → `VERIFIED` (2+ distinct buses) → `RESOLVED` (operator action). A new detection at a resolved location opens a new incident linked as a **recurrence** — useful for flagging a repair that didn't hold.
+Incidents move through `DETECTED` (one reporting bus) → `VERIFIED` (reports from at least two distinct buses satisfy the deduplication rules) → `RESOLVED` (operator action). Here, `VERIFIED` means corroborated by the system's multi-bus rule; it does not mean independently confirmed by a human or ground-truth inspection. A new detection at a resolved location opens a new incident linked as a **recurrence**.
 
 ### 6. Reliable Uplink (Offline Queue)
 Events are written to a local SQLite outbox before being sent. If the network drops, the uplink thread retries with exponential backoff; events are idempotent on `event_id`, so retries never create duplicates. A dead-letter table catches requests that can never succeed (e.g. bad auth) so they don't block the queue.
@@ -179,62 +179,73 @@ Every bus/phone authenticates with its own API key (stored server-side only as a
 
 ## Honest Performance Numbers
 
-Measured during outdoor field testing with physical phones over a live Cloudflare tunnel, not a lab benchmark:
+The figures below describe different experiments and should not be interpreted as one end-to-end performance measurement.
 
-| Metric | Result |
-|---|---|
-| Edge inference latency | ~67–76 ms per frame |
-| Achieved field frame rate | ~0.2–0.9 fps per phone |
-| Pothole model precision | 78.2% |
-| Pothole model mAP@50 | 74.3% |
-| Dedup validation (simulated) | 10 buses → 1 incident |
-| Dedup validation (real devices) | 3 phones, 44 reports → 1 incident |
+| Measurement | Recorded result | Scope and limitation |
+|---|---:|---|
+| Historical live edge-processing sample | 74.7 ms sample; 76.9 ms rolling median | A7 field measurement dated 2026-09-20 |
+| Historical capture/response rate | Approximately 2.0 FPS | Field measurement; not a guaranteed sustained rate or a phone-to-dashboard latency figure |
+| Pothole model precision | 78.2% | Model-card test set: 97 images and 292 ground-truth instances |
+| Pothole model recall | 67.4% | Same test-set evaluation |
+| Pothole model mAP@50 | 74.3% | Same test-set evaluation |
+| Pothole model mAP@50–95 | 38.4% | Same test-set evaluation |
+| Simulated deduplication | 10 simulated buses → 1 incident | Controlled fleet simulation |
+| Physical-device deduplication | 3 phones, 44 reports → 1 incident | Recorded field test |
 
-**We report this frame rate honestly rather than calling it real-time.** At ~0.2–0.9 fps, the system is near-real-time on current hardware (a laptop edge node over a phone's mobile connection), not continuous high-frame-rate video analytics. The architecture is designed for this to improve significantly on dedicated edge hardware (Jetson-class) rather than a laptop, which is the direct production path — the API, dedup engine, and dashboard do not change when the edge node changes.
+**What the latency number measures:** the edge timer covers `process_frame()`, including the sequential YOLO detection/tracking calls and event-engine processing. It excludes phone-side JPEG encoding, edge-side JPEG decoding, evidence-image encoding, SQLite outbox handling, cloud delivery, backend ingestion, and dashboard polling. Therefore, it is an edge-processing measurement—not complete inference-to-dashboard latency.
 
----
+**What the frame-rate number means:** approximately 2.0 FPS was recorded in a historical field measurement. The browser client uses a capture/response loop with a busy lock, so its configured polling interval is not a guarantee of sustained FPS. A separate 0.2–0.9 FPS figure has no sufficiently established measurement provenance and is not presented as a verified result here.
+
+**Model-evaluation limitation:** the model-card test set is small, and 48 test images share a filename-derived source identifier with training images. The evaluation is therefore not source-independent. Precision and mAP are dataset metrics, not guarantees of field accuracy.
+
+**End-to-end latency:** phone-to-dashboard latency has not yet been measured with a controlled, timestamped end-to-end experiment. We therefore do not claim that incidents consistently appear within a specified number of seconds.
+
+**Hardware:** the live edge measurements were taken on a laptop-based prototype. Jetson-class or rugged on-bus hardware is a production target, not hardware validated by these measurements.
 
 ## Real vs Simulated vs Production
 
-| Component | Current state | Evidence | Production plan |
+| Component | Current state | Evidence / interpretation | Production plan |
 |---|---|---|---|
-| Phone camera stream + edge processing | **Real, live** | Field-test recordings, live dashboard | Same pipeline, bus-mounted camera |
-| Pothole detection | **Real**, limited accuracy | Model card: 78.2% precision, 74.3% mAP@50 | Retrain on larger, road-specific dataset |
-| Person / vehicle detection | **Real** (pretrained YOLOv8 COCO classes) | Annotated detection video | Same |
-| Object tracking (ByteTrack) | **Real** | Stable track IDs in annotated video | Same |
-| Live GPS | **Real** (phone GPS, ~5–20 m accuracy) | Live bus trails on dashboard | Vehicle-grade GPS unit |
-| Multi-bus fleet | **Real** (2–3 physical phones) + simulated buses for scale testing | Dashboard fleet badges | Full physical fleet |
-| Deduplication | **Real algorithm**, tested with simulated and real devices | Validation table above | Same algorithm at fleet scale |
-| Offline queue | **Real**, tested with a live network cut | Field-test log | Same |
-| Backend + database | **Real**, deployed (Render + Postgres) | Live API at `/docs` | Same, scaled infrastructure |
-| Congestion / route-delay ML (Round 2 legacy) | Prototype models trained on engineered/simulated features | `models/` in repo | Retrain on real fleet + traffic ground truth, or drop |
-| Plate OCR / hit-and-run | **Simulated** (Round 2 prototype only) | Labelled `mock_ocr` in event data | Production-grade ALPR |
-| ONNX export | **Real**, benchmarked on a laptop CPU | Benchmark table in `docs/` | Evaluate on target edge hardware |
-| Jetson / rugged edge hardware | **Roadmap** — not tested | — | Primary production hardware target |
-| PostGIS, Kafka/Redis, RBAC | **Roadmap** | — | Needed at full fleet scale |
+| Phone camera stream + edge processing | **Real, live prototype** | Physical phones stream to a laptop edge server | Integrate bus-mounted camera with an on-bus edge computer |
+| Pothole detection | **Real model, limited evaluation** | Model-card test set: precision 78.2%, recall 67.4%, mAP@50 74.3%; small test set with source overlap | Collect a larger, source-independent, road-specific dataset and evaluate again |
+| Person / vehicle detection | **Real** | Pretrained YOLOv8 COCO classes | Validate against deployment-specific conditions |
+| Object tracking | **Real** | ByteTrack stable track IDs in the prototype | Validate on longer, crowded fleet recordings |
+| Live GPS | **Real phone GPS** | Phone GPS is approximate; reported accuracy is typically around 5–20 m in the prototype context | Use vehicle-grade GPS where required |
+| Multi-bus fleet | **Limited physical devices + simulation** | Physical-phone tests and simulated buses are separate test conditions | Validate with a larger physical fleet |
+| Deduplication | **Implemented and tested** | Controlled simulation and physical-device test results are reported above | Validate matching thresholds against independently labelled incidents |
+| Offline queue | **Real, tested** | Field-test network-cut test | Test longer outages and recovery under fleet load |
+| Backend + database | **Real, deployed** | FastAPI and PostgreSQL deployment | Scale infrastructure and operational monitoring |
+| Congestion / route-delay ML (Round 2 legacy) | Prototype models using engineered / simulated features | Not evidence of a validated live traffic-prediction service | Retrain on real fleet and traffic ground truth, or remove |
+| Plate OCR / hit-and-run | **Simulated Round 2 prototype only** | Mock OCR data; not a production ALPR system | Separate production-grade implementation and legal review |
+| ONNX export | **Offline benchmark only** | Laptop CPU comparison; ONNX was slower than PyTorch for the pothole model in that benchmark | Repeat controlled benchmarks on target hardware |
+| Jetson / rugged edge hardware | **Roadmap — not tested** | No Jetson performance result is claimed | Primary production hardware target |
+| PostGIS, Kafka / Redis, RBAC | **Roadmap** | Not represented as deployed capabilities | Evaluate as fleet scale and operational needs grow |
 
-> **Judge-ready answer:** *"We validated the full event-to-intelligence pipeline live, using a phone's camera and GPS as the bus device, with real edge inference, real deduplication across real devices, and a deployed cloud backend. Production replaces the phone with a bus-mounted camera and GPS unit on the same architecture — the API, dedup engine, and dashboard do not change."*
+**ONNX benchmark context:** the separate Apple M2 CPU benchmark reported 63.25 ms for PyTorch and 108.43 ms for ONNX on the pothole model, and 33.60 ms for PyTorch and 38.12 ms for ONNX on the vehicle model. These are results from one offline benchmark setup, not a universal comparison or a live edge-system measurement.
 
----
+**Round 2 batch experiment:** a separate replay processed 2,606 raw reports through the S1.4 deduplication engine. Only 11 reports were supported by the engine's pothole and pedestrian-risk rules; those reports were linked to 2 resulting incidents. This is a replay result, not 2,606 successful live detections and not a detection-accuracy metric.
+
+**Batch-video experiment:** a separate 30-second, 900-frame video experiment produced 78 candidate pothole events and zero congestion events at confidence threshold 0.25. Its timestamps were generated from frame positions, and GPS was simulated along a predefined route. These are experimental outputs, not independently ground-truthed detections or real recording-time GPS.
 
 ## Feasibility Snapshot
 
-- **2,606** events processed across prototype validation (Round 2 baseline) plus live Round 3 field testing
-- **5** core technologies proven end-to-end in a deployed system
-- End-to-end pipeline validated: video → detection → event → dedup → dashboard
+- **2,606 raw reports** were replayed in a separate Round 2 validation experiment; 11 reports were supported by the S1.4 pothole and pedestrian-risk rules and linked to 2 resulting incidents.
+- **Physical-device deduplication:** one recorded test merged 44 reports from 3 phones into one incident.
+- **Simulated-fleet deduplication:** one controlled test merged reports from 10 simulated buses into one incident.
+- The live prototype demonstrates the phone → edge processing → event uplink → backend deduplication → dashboard workflow. Full phone-to-dashboard latency has not yet been measured.
 
-| Challenge | Mitigation |
+| Challenge | Current mitigation / limitation |
 |---|---|
-| Video quality, lighting, and motion variation | Confidence thresholds + temporal/spatial deduplication |
-| Duplicate events across frames and across buses | ByteTrack (within-camera) + spatio-temporal dedup engine (cross-bus) |
-| Real-world data and ground-truth requirements | Field-test data collection; retraining path documented |
-| Edge compute, connectivity, security, storage | Edge inference, offline outbox, per-bus API keys, event-first (not video) transmission |
-
----
+| Video quality, lighting, and motion variation | Confidence thresholds and temporal/spatial event logic; broader road-specific evaluation is still needed |
+| Duplicate events across frames and buses | ByteTrack for within-camera tracking and a spatio-temporal deduplication engine for cross-bus reports |
+| Real-world data and ground truth | Physical-device field tests exist, but larger independently labelled datasets are needed |
+| Edge compute and connectivity | Laptop-based edge processing and SQLite offline outbox; dedicated on-bus hardware remains a production target |
+| Security and storage | Per-bus API keys, separate read-token protection, event-oriented cloud uplink, and PostgreSQL persistence |
+| Evaluation quality | Dataset source overlap and limited test-set size are disclosed; independent evaluation remains future work |
 
 ## Impact
 
-**Authorities** — real-time, location-linked road intelligence and faster incident response, without new fixed sensing infrastructure.
+**Authorities** — location-linked road reports to support hazard triage and maintenance prioritization, without installing a new fixed sensing network.
 
 **Commuters** — safer roads through faster hazard detection and repair prioritization.
 
@@ -292,7 +303,7 @@ This prints a temporary URL like `https://<random-name>.trycloudflare.com` — a
 https://<cloudflare-url>.trycloudflare.com/client
 ```
 
-Enter the bus ID (e.g. `TN-BUS-001`) and its API key, grant camera and location permissions, and start sensing. Detection boxes render live on the phone; events appear on the Control Center within seconds.
+Enter the bus ID (e.g. `TN-BUS-001`) and its API key, grant camera and location permissions, and start sensing. Detection boxes render on the phone, while structured reports are sent through the edge server and backend to the Control Center. The time taken for a report to appear depends on capture, processing, network, backend, and dashboard polling conditions.
 
 ### 5. Multi-device field test
 
@@ -397,7 +408,27 @@ AI-Powered Mobile Urban Intelligence Platform Using Public Transport Fleet · So
 
 ## Screenshots
 
-_[Add Control Center screenshots here]_
+### System Screenshots
+
+| Screenshot 1 | Screenshot 2 |
+|---|---|
+| ![TransitNexus screenshot 1](docs/assets/TransitNexus_1.jpeg) | ![TransitNexus screenshot 2](docs/assets/TransitNexus_2.jpeg) |
+
+| Screenshot 3 | Screenshot 4 |
+|---|---|
+| ![TransitNexus screenshot 3](docs/assets/TransitNexus_3.jpeg) | ![TransitNexus screenshot 4](docs/assets/TransitNexus_4.png) |
+
+| Screenshot 5 | Screenshot 6 |
+|---|---|
+| ![TransitNexus screenshot 5](docs/assets/TransitNexus_5.png) | ![TransitNexus screenshot 6](docs/assets/TransitNexus_6.png) |
+
+### Additional Screenshot
+
+![TransitNexus screenshot 7](docs/assets/TransitNexus_7.png)
+
+### Full System Demonstration
+
+[Watch the TransitNexus demonstration video (1080p)](docs/assets/TransitNexus_Demo_1080p.mp4)
 
 ## Research and References
 

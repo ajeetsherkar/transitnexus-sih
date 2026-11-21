@@ -1,0 +1,31 @@
+TRANSITNEXUS — FIRST INFERENCE RUN
+Date: 2026-11-21
+
+Pipeline: Session 4 batch event extraction
+Source: data/raw/videos/mumbra_bhiwandi_01.mp4
+Model: models/pothole_best.pt
+Model type: pothole
+Confidence threshold: 0.25
+
+VIDEO DETAILS
+Resolution: 1280 x 720
+Frame rate: 30 FPS
+Total frames: 900
+Duration: 30 seconds
+
+RUN RESULTS
+Processed frames: 900
+Total extracted events: 78
+Pothole events: 78
+Congestion events: 0
+Execution status: Completed successfully
+
+OUTPUTS
+Events file: data/processed/events.json
+Event crops: data/processed/events/
+
+LIMITATIONS
+- The script did not report per-frame processing time.
+- No batch runtime or throughput measurement was recorded.
+- The 78 extracted events are not independently verified ground-truth potholes.
+- This is the batch Session 4 pipeline, not the live phone-to-edge WebSocket pipeline.

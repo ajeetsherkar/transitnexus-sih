@@ -1,0 +1,37 @@
+============================================================
+TRANSITNEXUS SESSION 4 EVENT EXTRACTION
+============================================================
+Model type : pothole
+Model      : ./models/pothole_best.pt
+Source     : data/raw/videos/mumbra_bhiwandi_01.mp4
+Confidence : 0.25
+Congestion threshold : 5.0
+Pedestrian zone      : (620, 330, 780, 490)
+============================================================
+Video FPS      : 30.00
+Video frames   : 900
+Video duration : 30.00s
+
+Processed frame 100/900 | Events: 0
+Processed frame 200/900 | Events: 0
+Processed frame 300/900 | Events: 25
+Processed frame 400/900 | Events: 31
+Processed frame 500/900 | Events: 46
+Processed frame 600/900 | Events: 46
+Processed frame 700/900 | Events: 46
+Processed frame 800/900 | Events: 47
+Processed frame 900/900 | Events: 78
+
+============================================================
+SESSION 4 EVENT EXTRACTION SUMMARY
+============================================================
+Processed frames : 900
+Total events     : 78
+
+Event types:
+  - Pothole: 78
+
+Congestion events : 0
+Events file       : ./data/processed/events.json
+Event crops       : ./data/processed/events
+✅ Session 4 event extraction completed successfully
