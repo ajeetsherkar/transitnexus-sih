@@ -1,7 +1,16 @@
 from pathlib import Path
 from collections import Counter
 
-ROOT = Path.home() / "Downloads" / "Multi-Weather Pothole Detection (MWPD)" / "MWPD"
+import yaml
+
+CONFIG = Path(__file__).resolve().parent / "data.yaml"
+config = yaml.safe_load(CONFIG.read_text())
+dataset_path = Path(config["path"]).expanduser()
+ROOT = (
+    dataset_path
+    if dataset_path.is_absolute()
+    else (CONFIG.parent / dataset_path).resolve()
+)
 
 
 def audit(split):

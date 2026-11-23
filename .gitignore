@@ -32,3 +32,6 @@ cloud_keys.json
 
 # Generated A2 demo outputs
 out/
+
+# Local research dataset (do not commit)
+/Multi-Weather Pothole Detection (MWPD)/
