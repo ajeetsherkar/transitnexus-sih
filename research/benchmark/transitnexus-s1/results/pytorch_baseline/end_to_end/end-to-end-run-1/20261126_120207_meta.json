@@ -1,0 +1,62 @@
+{
+  "timestamp": "20261126_120207",
+  "summary": {
+    "iterations": 200,
+    "mean_ms": 47.04400147498745,
+    "std_ms": 2.180499815509706,
+    "median_ms": 46.69306249979854,
+    "p50_ms": 46.69306249979854,
+    "p95_ms": 49.156847900621834,
+    "p99_ms": 56.612247670618636,
+    "min_ms": 43.72700000021723,
+    "max_ms": 62.00824999996257
+  },
+  "environment": {
+    "cpu_model": "arm",
+    "cpu_cores": 8,
+    "ram_gb": 8.0,
+    "operating_system": "macOS-26.5.2-arm64-arm-64bit",
+    "python_version": "3.11.13",
+    "library_versions": {
+      "numpy": "2.4.6",
+      "torch": "2.14.0",
+      "onnxruntime": "1.30.0",
+      "ultralytics": "8.4.142",
+      "opencv-python": "5.0.0.93",
+      "psutil": "7.2.2",
+      "pandas": "3.0.5"
+    },
+    "git_commit": "d04e8fb198447059e0ca90d5b8f4b9afce236356"
+  },
+  "metadata": {
+    "mode": "end-to-end",
+    "measurement_scope": "BGR_frame_to_preprocessing_inference_and_NMS",
+    "runtime": "pytorch",
+    "device": "cpu",
+    "precision": "fp32",
+    "imgsz": 640,
+    "rect": false,
+    "batch": 1,
+    "intra_op_threads": 7,
+    "inter_op_threads": 8,
+    "warmup_iters": 20,
+    "timed_iters": 200,
+    "confidence": 0.25,
+    "nms_iou": 0.7,
+    "launch_id": "end-to-end-run-1",
+    "video_frames": 200,
+    "video_shape": [
+      720,
+      1280,
+      3
+    ],
+    "model_path": "/Users/ajeetsherkar/transitnexus-sih/models/pothole/best.pt",
+    "model_sha256": "4a1eba894263fea7874eb4ea9e4dd3887bcb4e8d2bed83ccaa098f5d3e35608f",
+    "transitnexus_git_commit": "18a5be2cc14f4b5af1b5656e68eb302905626e7b",
+    "eth_preparation_git_commit": "d04e8fb198447059e0ca90d5b8f4b9afce236356",
+    "model_class_names": {
+      "0": "Potholes"
+    },
+    "note": "Model-only excludes preprocessing and NMS. End-to-end uses the Ultralytics predict call and includes preprocessing, inference and NMS. Video decoding, model loading and warm-up are excluded."
+  }
+}

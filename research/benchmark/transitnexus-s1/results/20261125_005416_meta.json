@@ -1,0 +1,41 @@
+{
+  "timestamp": "20261125_005416",
+  "summary": {
+    "iterations": 200,
+    "mean_ms": 0.0003147250026813708,
+    "std_ms": 4.955633983237427e-05,
+    "median_ms": 0.00029199873097240925,
+    "p50_ms": 0.00029199873097240925,
+    "p95_ms": 0.0004160492608207278,
+    "p99_ms": 0.0004588297088048413,
+    "min_ms": 0.0002499982656445354,
+    "max_ms": 0.0005420006345957518
+  },
+  "environment": {
+    "cpu_model": "arm",
+    "cpu_cores": 8,
+    "ram_gb": 8.0,
+    "operating_system": "macOS-26.5.2-arm64-arm-64bit",
+    "python_version": "3.11.13",
+    "library_versions": {
+      "numpy": "2.4.6",
+      "torch": "2.8.0",
+      "onnxruntime": null,
+      "ultralytics": null,
+      "opencv-python": "4.8.0.76",
+      "psutil": "7.0.0",
+      "pandas": "3.0.3"
+    },
+    "git_commit": "40ca3743d89169bdf169256ff1364716baf77ce7"
+  },
+  "metadata": {
+    "mode": "dummy_demo",
+    "runtime": "pytorch",
+    "precision": "fp32",
+    "imgsz": 640,
+    "batch": 1,
+    "threads": 1,
+    "warmup_iters": 20,
+    "timed_iters": 200
+  }
+}
