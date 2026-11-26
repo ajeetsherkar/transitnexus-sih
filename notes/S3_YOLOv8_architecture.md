@@ -1,24 +1,22 @@
-# S3 — YOLOv8 Architecture: NMS Fundamentals
+# S3 — YOLOv8 Architecture, NMS and Compute Analysis
 
-## 1. What is NMS?
+## 1. NMS Fundamentals
 
-NMS stands for Non-Maximum Suppression.
+### What is NMS?
 
-YOLO can predict multiple overlapping bounding boxes for the same
-object. NMS removes duplicate detections and keeps the strongest
-prediction.
+NMS stands for **Non-Maximum Suppression**.
 
-For TransitNexus, the detected object class is Potholes.
+YOLO can predict multiple overlapping bounding boxes for the same object. NMS removes duplicate detections and keeps the strongest prediction.
 
-## 2. Three Important NMS Concepts
+In TransitNexus, the detected object class is **Potholes**.
 
-### A. Confidence Threshold
+### Three Important NMS Concepts
 
-Every predicted bounding box has a confidence score.
+**A. Confidence Threshold**
 
-The confidence threshold decides which predictions are worth keeping.
+Every predicted bounding box has a confidence score. The confidence threshold decides which predictions are worth keeping.
 
-Example (confidence threshold = 0.25):
+Example: confidence threshold = 0.25.
 
 | Detection | Confidence | Decision |
 |---|---:|---|
@@ -28,13 +26,13 @@ Example (confidence threshold = 0.25):
 
 Predictions below the threshold are filtered out before NMS.
 
-### B. IoU Threshold
+**B. IoU Threshold**
 
-IoU means Intersection over Union.
+IoU means **Intersection over Union**. It measures the overlap between two bounding boxes.
 
-It measures the overlap between two bounding boxes.
-
-IoU = Intersection Area / Union Area
+\[
+IoU = \frac{\text{Intersection Area}}{\text{Union Area}}
+\]
 
 Example:
 - Box A and Box B overlap heavily.
@@ -42,23 +40,20 @@ Example:
 - The configured NMS IoU threshold is 0.70.
 - The lower-confidence box is suppressed.
 
-A higher IoU means greater overlap.
+A higher IoU indicates greater overlap.
 
-### C. Per-Class Suppression
+**C. Per-Class Suppression**
 
 NMS is generally applied separately for each object class.
 
-For example, a person detection should not normally suppress
-a car detection just because their boxes overlap.
+For example, a person detection should not normally suppress a car detection just because their boxes overlap.
 
 TransitNexus currently has one class:
-
 - Class 0: Potholes
 
-Therefore, all candidate pothole detections are considered
-within the same class during class-aware NMS.
+Therefore, all candidate pothole detections are considered within the same class during class-aware NMS.
 
-## 3. Why Can NMS Take Time on CPU?
+### Why Can NMS Take Time on CPU?
 
 1. The detection head can produce thousands of candidate boxes.
 2. Confidence filtering removes low-scoring candidates.
@@ -66,133 +61,154 @@ within the same class during class-aware NMS.
 4. NMS calculates box overlaps using IoU.
 5. Lower-confidence overlapping boxes are suppressed.
 
-Sorting, indexing and repeated overlap calculations can add
-CPU processing overhead, especially when many candidates survive
-confidence filtering.
+Sorting, indexing and repeated overlap calculations can add CPU processing overhead, especially when many candidates survive confidence filtering.
 
-## 4. Why Is NMS Less Straightforward to Batch?
+### Why Is NMS Less Straightforward to Batch?
 
 The number of detections that survive NMS can vary by image.
 
-Example:
+For example:
 - Image A: 5 detections
 - Image B: 20 detections
 - Image C: 2 detections
 
-Neural-network outputs usually have fixed tensor shapes, but
-post-NMS detection counts can vary. This makes batching the
-final detection outputs less straightforward.
+Neural-network outputs usually have fixed tensor shapes, but post-NMS detection counts can vary. This makes batching the final detection outputs less straightforward.
 
-## 5. TransitNexus Model Context
+---
 
-Verified model: models/pothole/best.pt
+## 2. TransitNexus Model Context
 
-- Architecture: YOLOv8
-- Classes: 1 (Potholes)
-- Input tensor: (1, 3, 640, 640)
-- Forward output: (1, 5, 8400)
-- Detection strides: 8, 16, 32
+**Verified model:** `models/pothole/best.pt`
 
-The forward output represents 8,400 candidate locations.
-NMS filters these candidates into final detections.
+| Property | Verified value |
+|---|---|
+| Architecture | YOLOv8 |
+| Classes | 1 — Potholes |
+| Input tensor | `(1, 3, 640, 640)` |
+| Forward output | `(1, 5, 8400)` |
+| Detection strides | 8, 16, 32 |
+| Model parameters | 3,011,043 |
 
-## 6. Key Takeaway
+The forward output represents 8,400 candidate locations. NMS filters these candidates to produce final detections.
 
-- Confidence threshold removes weak predictions.
-- IoU threshold controls how much overlap is allowed.
-- Per-class NMS suppresses duplicate boxes within each class.
-- NMS can add CPU overhead because of sorting and overlap calculations.
-- The number of final detections can vary from image to image.
+---
 
-**S3 progress:** NMS fundamentals documented.
-**Pending:** Architecture pipeline diagram, verified intermediate
-tensor shapes, compute-cost estimates, and numerical time-breakdown
-prediction.
+## 3. YOLOv8 Architecture Pipeline
 
-# 7. Actual YOLOv8 Architecture — Verified Tensor Shapes
+The TransitNexus model follows three main architectural stages:
 
-The following shapes were collected using forward hooks on the
-actual TransitNexus model: models/pothole/best.pt.
+1. **Backbone:** Extracts visual features from the input image.
+2. **Neck:** Combines features from multiple spatial scales.
+3. **Detection Head:** Produces predictions using the combined features.
 
-Input tensor: (1, 3, 640, 640)
+```mermaid
+flowchart TD
+    A["Input image: 640 × 640"] --> B["Backbone: Layers 0–9"]
+    B --> C["Neck: Layers 10–21"]
+    C --> D["Detection Head: Layer 22"]
+    D --> E["Raw output: (1, 5, 8400)"]
+    E --> F["Confidence filtering"]
+    F --> G["Non-Maximum Suppression (NMS)"]
+    G --> H["Final pothole detections"]
+```
 
-## Backbone — Layers 0–9
+The diagram is a grouped representation of the actual model layers. The layer output shapes and final detection output were verified using forward hooks on the actual TransitNexus model.
+
+### Backbone — Layers 0–9
+
+The backbone extracts visual features and progressively reduces the spatial dimensions of the input.
 
 | Layer | Operation | Output shape |
 |---|---|---|
-| 0 | Conv | (1,16,320,320) |
-| 1 | Conv | (1,32,160,160) |
-| 2 | C2f | (1,32,160,160) |
-| 3 | Conv | (1,64,80,80) |
-| 4 | C2f | (1,64,80,80) |
-| 5 | Conv | (1,128,40,40) |
-| 6 | C2f | (1,128,40,40) |
-| 7 | Conv | (1,256,20,20) |
-| 8 | C2f | (1,256,20,20) |
-| 9 | SPPF | (1,256,20,20) |
+| 0 | Conv | `(1,16,320,320)` |
+| 1 | Conv | `(1,32,160,160)` |
+| 2 | C2f | `(1,32,160,160)` |
+| 3 | Conv | `(1,64,80,80)` |
+| 4 | C2f | `(1,64,80,80)` |
+| 5 | Conv | `(1,128,40,40)` |
+| 6 | C2f | `(1,128,40,40)` |
+| 7 | Conv | `(1,256,20,20)` |
+| 8 | C2f | `(1,256,20,20)` |
+| 9 | SPPF | `(1,256,20,20)` |
 
-## Neck — Layers 10–21
+### Neck — Layers 10–21
 
-| Layer(s) | Operation | Output shape |
+The neck combines features from different spatial scales.
+
+| Layers | Operations | Output shape |
 |---|---|---|
-| 10–12 | Upsample, Concat, C2f | (1,128,40,40) |
-| 13–15 | Upsample, Concat, C2f | (1,64,80,80) |
-| 16–18 | Conv, Concat, C2f | (1,128,40,40) |
-| 19–21 | Conv, Concat, C2f | (1,256,20,20) |
+| 10–12 | Upsample, Concat, C2f | `(1,128,40,40)` |
+| 13–15 | Upsample, Concat, C2f | `(1,64,80,80)` |
+| 16–18 | Conv, Concat, C2f | `(1,128,40,40)` |
+| 19–21 | Conv, Concat, C2f | `(1,256,20,20)` |
 
 The three detection feature maps are:
-- P3: layer 15, (1,64,80,80), 6,400 locations
-- P4: layer 18, (1,128,40,40), 1,600 locations
-- P5: layer 21, (1,256,20,20), 400 locations
 
-## Detection Head — Layer 22
+| Feature map | Layer | Output shape | Locations |
+|---|---:|---|---:|
+| P3 | 15 | `(1,64,80,80)` | 6,400 |
+| P4 | 18 | `(1,128,40,40)` | 1,600 |
+| P5 | 21 | `(1,256,20,20)` | 400 |
 
-Detect receives features from layers [15,18,21].
+- **P3:** High-resolution features, useful for smaller objects.
+- **P4:** Intermediate-scale features.
+- **P5:** Lower-resolution features with larger spatial context.
 
-Actual forward output: (1,5,8400)
+### Detection Head — Layer 22
 
-Total locations = 6,400 + 1,600 + 400 = 8,400.
+The Detect layer receives features from layers `[15, 18, 21]`.
 
-For this single-class model, the five output values per location
-represent four box coordinates and one class score.
+Verified forward output:
+
+`(1, 5, 8400)`
+
+Total locations:
+
+\[
+6400 + 1600 + 400 = 8400
+\]
+
+For this single-class model, the five output values per location represent four bounding-box coordinates and one class score.
 
 NMS subsequently filters candidate boxes to produce final detections.
 
-## Architecture Interpretation
+### Architecture Interpretation
 
-- Backbone extracts visual features and progressively downsamples.
+- Backbone extracts visual features and progressively downsamples the input.
 - Neck combines features at multiple spatial scales.
-- P3 provides high-resolution features useful for smaller objects.
-- P4 provides intermediate-scale features.
-- P5 provides lower-resolution, larger-context features.
-- Detection head combines the three scales.
+- P3, P4 and P5 provide different levels of spatial detail.
+- Detection head combines the three scales to produce predictions.
 - NMS removes low-confidence and duplicate detections.
 
-**Evidence status:** Layer output shapes and final detection output
-were directly verified using forward hooks and a 640x640 input.
-The diagram is a grouped representation of the actual model layers.
+**Evidence:** Layer output shapes and final detection output were directly verified using forward hooks and a 640 × 640 input.
 
-**S3 progress:** Actual architecture tensor shapes verified and documented.
+---
 
-## Compute-Cost Profile — 640x640
+## 4. Compute-Cost Profile — 640 × 640
 
-### Verified model-level results
+### Verified Model-Level Results
 
-- Parameters: 3,011,043 (3.011M)
-- THOP total: 4.0958 G MACs
-- Conv2d operations: 4.0414 G MACs
-- Ultralytics model summary: approximately 8.2 GFLOPs
+| Metric | Result |
+|---|---:|
+| Parameters | 3,011,043 (3.011M) |
+| THOP total | 4.0958 G MACs |
+| Conv2d operations | 4.0414 G MACs |
+| Ultralytics model summary | Approximately 8.2 GFLOPs |
 
-### Conv2d MAC distribution
+THOP reports MACs (Multiply-Accumulate Operations), while the Ultralytics model summary reports GFLOPs. These figures use different reporting conventions and should not be treated as identical measurements.
+
+### Conv2d MAC Distribution
 
 | Component | Layers | MACs | Share |
 |---|---|---:|---:|
-| Backbone | 0-9 | 1.5778 G | 39.04% |
-| Neck | 10-21 | 0.9830 G | 24.32% |
+| Backbone | 0–9 | 1.5778 G | 39.04% |
+| Neck | 10–21 | 0.9830 G | 24.32% |
 | Detection head | 22 | 1.4806 G | 36.63% |
-| Total | | 4.0414 G | 99.99% |
+| Total | — | 4.0414 G | 99.99% |
 
-### Interpretation and limitations
+The total share is 99.99% because of rounding.
+
+### Interpretation and Limitations
 
 - Backbone and detection head account for the largest shares of Conv2d MACs.
 - Upsampling and concatenation operations are not represented by Conv2d MAC counts.
@@ -200,56 +216,75 @@ The diagram is a grouped representation of the actual model layers.
 - NMS and ByteTrack require separate timing measurements.
 - ByteTrack belongs to the tracking-enabled application path, not the single-model PyTorch benchmark.
 
-Evidence: THOP profiling and PyTorch Conv2d forward hooks at 640x640.
+**Evidence:** THOP profiling and PyTorch Conv2d forward hooks at 640 × 640.
 
+---
 
-## NMS and ByteTrack Cost Assessment
+## 5. NMS and ByteTrack Cost Assessment
 
 ### NMS — Ultralytics 8.4.142
-Source: ultralytics/utils/nms.py
 
-- Confidence filtering removes weak detection candidates.
-- IoU threshold controls suppression of overlapping boxes.
-- Candidates are filtered and processed before final detections are returned.
-- Sorting and box-overlap calculations add CPU overhead.
-- More surviving candidates can increase NMS workload.
-- TransitNexus pothole model has one class, reducing multi-class complexity.
+**Source:** `ultralytics/utils/nms.py`
+
+NMS processing includes:
+- Confidence filtering to remove weak detection candidates.
+- IoU-based suppression of overlapping boxes.
+- Sorting and processing candidate detections.
+- Returning the final detections.
+
+More surviving candidates can increase NMS workload.
+
+TransitNexus uses a single-class pothole model, reducing multi-class complexity.
 
 ### ByteTrack — Ultralytics 8.4.142
-Source: ultralytics/trackers/byte_tracker.py
 
-Actual update pipeline:
+**Source:** `ultralytics/trackers/byte_tracker.py`
+
+The tracking update pipeline includes:
+
 1. Split detections into high- and low-confidence groups.
 2. Initialize detection tracks.
 3. Predict existing track positions using a Kalman filter.
 4. Associate tracks with high-confidence detections.
 5. Associate remaining tracks with low-confidence detections using IoU.
-6. Update, create, mark lost, and remove tracks.
+6. Update, create, mark lost and remove tracks.
 
-- More detections and active tracks can increase matching workload.
-- Tracking adds per-frame CPU processing.
-- ByteTrack is not included in the single-model PyTorch benchmark.
+More detections and active tracks can increase matching workload.
+
+Tracking adds per-frame CPU processing. ByteTrack is not included in the single-model PyTorch benchmark.
 
 ### Compute Assessment — Limitations
-- Backbone, neck, and detection-head percentages represent Conv2d MAC shares only.
+
+- Backbone, neck and detection-head percentages represent Conv2d MAC shares only.
 - They are not measured runtime percentages.
 - NMS and ByteTrack have not been independently timed.
 - Separate runtime profiling is required before claiming their actual time shares.
-- The single-model benchmark excludes video decoding, tracking, GPS, crop saving, and event processing.
+- The single-model benchmark excludes video decoding, tracking, GPS, crop saving and event processing.
 
-Evidence: Installed Ultralytics 8.4.142 source inspection and Conv2d forward-hook profiling.
+**Evidence:** Installed Ultralytics 8.4.142 source inspection and Conv2d forward-hook profiling.
 
-## Numerical Time-Breakdown Prediction — 640x640
+---
 
-### Measured reference
-- PyTorch model-only Run 1: 47.249 ms
-- PyTorch model-only Run 2: 46.608 ms
-- Combined model-only mean: 46.929 ms/frame
-- Model-only path: raw neural-network forward pass, without NMS or tracking.
+## 6. Numerical Time-Breakdown Prediction — 640 × 640
 
-### Provisional stage estimates
+### Measured Reference
 
-The following estimates allocate model-forward latency according to Conv2d MAC shares. They are not individually measured stage timings.
+| Measurement | Mean latency |
+|---|---:|
+| PyTorch model-only Run 1 | 47.249 ms |
+| PyTorch model-only Run 2 | 46.608 ms |
+| Combined model-only mean | 46.929 ms/frame |
+| PyTorch end-to-end Run 1 | 47.044 ms/frame |
+
+The model-only path measures the raw neural-network forward pass without NMS or tracking.
+
+The end-to-end measurement starts with an already-decoded BGR frame and includes preprocessing, inference, NMS and Python predictor overhead.
+
+It excludes video decoding, model loading and warm-up.
+
+### Provisional Stage Estimates
+
+The following estimates allocate model-forward latency according to Conv2d MAC shares. They are **not individually measured stage timings**.
 
 | Component | Conv2d MAC share | Estimated time |
 |---|---:|---:|
@@ -258,8 +293,11 @@ The following estimates allocate model-forward latency according to Conv2d MAC s
 | Detection head | 36.63% | 17.19 ms |
 | Total | 99.99% | 46.92 ms |
 
-### NMS and tracking
-- PyTorch model.predict() end-to-end Run 1: 47.044 ms/frame.
+The total is approximately 46.92 ms because the component estimates are rounded.
+
+### NMS and Tracking
+
+- PyTorch `model.predict()` end-to-end Run 1: 47.044 ms/frame.
 - This includes preprocessing, inference, NMS and Python predictor overhead.
 - NMS runtime has not been isolated.
 - ByteTrack runtime has not been measured.
@@ -267,9 +305,31 @@ The following estimates allocate model-forward latency according to Conv2d MAC s
 - No numerical runtime allocation is claimed for NMS or ByteTrack.
 
 ### Interpretation
+
 - Backbone and detection head have the largest Conv2d MAC shares.
-- MAC share is only a rough proxy for compute distribution; actual stage latency depends on hardware, memory operations and implementation.
+- MAC share is only a rough proxy for compute distribution.
+- Actual stage latency depends on hardware, memory operations and implementation.
 - The estimates must not be presented as measured per-layer latency.
 - Further profiling is required to isolate NMS and tracking overhead.
 
-Evidence: Two PyTorch model-only runs, one end-to-end run, THOP profiling and PyTorch Conv2d forward hooks at 640x640.
+**Evidence:** Two PyTorch model-only runs, one end-to-end run, THOP profiling and PyTorch Conv2d forward hooks at 640 × 640.
+
+---
+
+## 7. S3 Final Status
+
+**S3 technical analysis completed.**
+
+| Task | Status |
+|---|---|
+| NMS fundamentals | Completed |
+| YOLOv8 architecture pipeline diagram | Documented |
+| Verified intermediate tensor shapes | Completed |
+| Backbone, neck and detection-head analysis | Completed |
+| Model parameters and compute-cost profile | Completed |
+| Conv2d MAC distribution | Completed |
+| NMS and ByteTrack cost assessment | Documented |
+| Numerical time-breakdown prediction | Completed |
+| Measurement limitations and evidence | Documented |
+
+**Important research distinction:** The architecture shapes and model-level compute figures are verified results. The Conv2d stage time breakdown is a provisional estimate, while NMS and ByteTrack runtime remain unmeasured. These distinctions must be preserved in future reports and research claims.
