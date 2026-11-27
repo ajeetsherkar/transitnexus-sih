@@ -1,0 +1,80 @@
+{
+  "timestamp": "20261128_001544",
+  "summary": {
+    "iterations": 200,
+    "mean_ms": 39.20251352486957,
+    "std_ms": 10.75594719932938,
+    "median_ms": 34.64106250066834,
+    "p50_ms": 34.64106250066834,
+    "p95_ms": 55.142970498945935,
+    "p99_ms": 67.6958166605615,
+    "min_ms": 33.5924579994753,
+    "max_ms": 132.35004099988146
+  },
+  "environment": {
+    "cpu_model": "arm",
+    "cpu_cores": 8,
+    "ram_gb": 8.0,
+    "operating_system": "macOS-26.5.2-arm64-arm-64bit",
+    "python_version": "3.11.13",
+    "library_versions": {
+      "numpy": "2.4.6",
+      "torch": "2.14.0",
+      "onnxruntime": "1.30.0",
+      "ultralytics": "8.4.142",
+      "opencv-python": "5.0.0.93",
+      "psutil": "7.2.2",
+      "pandas": "3.0.5"
+    },
+    "git_commit": "8784c45e6986aaef9a0344d51781b0c5a82e6ab2"
+  },
+  "metadata": {
+    "mode": "model-only",
+    "measurement_scope": "preprocessed_numpy_tensor_to_onnx_raw_predictions",
+    "runtime": "onnxruntime",
+    "onnxruntime_version": "1.30.0",
+    "providers": [
+      "CPUExecutionProvider"
+    ],
+    "device": "cpu",
+    "precision": "fp32",
+    "graph_optimization_level": "ORT_ENABLE_ALL",
+    "imgsz": 640,
+    "rect": false,
+    "batch": 1,
+    "warmup_iters": 20,
+    "timed_iters": 200,
+    "confidence": 0.25,
+    "nms_iou": 0.7,
+    "max_det": 300,
+    "class_agnostic_nms": false,
+    "multi_label": false,
+    "launch_id": "launch1",
+    "video_frames": 200,
+    "video_shape": [
+      720,
+      1280,
+      3
+    ],
+    "onnx_model_path": "/Users/ajeetsherkar/transitnexus-sih/models/pothole/best_benchmark.onnx",
+    "onnx_model_sha256": "57e455361cf214140f0e3563f43c20ae2800870b07313cce4558979d6d1a9aba",
+    "pytorch_model_path": "/Users/ajeetsherkar/transitnexus-sih/models/pothole/best.pt",
+    "pytorch_model_sha256": "4a1eba894263fea7874eb4ea9e4dd3887bcb4e8d2bed83ccaa098f5d3e35608f",
+    "transitnexus_git_commit": "f2c0daa6f6225f87f8ef0387d05d6152dbf607fa",
+    "eth_preparation_git_commit": "8784c45e6986aaef9a0344d51781b0c5a82e6ab2",
+    "onnx_input_name": "images",
+    "onnx_output_name": "output0",
+    "onnx_input_shape": [
+      1,
+      3,
+      640,
+      640
+    ],
+    "onnx_output_shape": [
+      1,
+      5,
+      8400
+    ],
+    "note": "Model-only measures ONNX inference on preprocessed FP32 NumPy inputs. End-to-end includes Ultralytics preprocessing, ONNX Runtime inference, NumPy-to-Torch conversion and shared Ultralytics NMS. Video decoding, model/session loading and warm-up are excluded. CPUExecutionProvider is explicitly used."
+  }
+}
